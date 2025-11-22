@@ -15,6 +15,7 @@ export default function InterviewPage() {
   const [isListening, setIsListening] = useState(false);
   const [timeLeft, setTimeLeft] = useState(900);
   const [transcriptDisplay, setTranscriptDisplay] = useState("");
+  const [silenceLeft, setSilenceLeft] = useState(5); // 5 seconds until auto-submit
 
   // ---------------------- REFS ----------------------
   const recognitionRef = useRef(null);
@@ -71,8 +72,13 @@ export default function InterviewPage() {
       }
 
       if (final) currentTranscriptRef.current += final;
-
       setTranscriptDisplay(currentTranscriptRef.current + interim);
+
+      // measure speech length for silence detection
+      const spokenLength = currentTranscriptRef.current.trim().length + interim.trim().length;
+      if (spokenLength > 2) {
+        setSilenceLeft(5); // reset silence countdown if speaking
+      }
     };
 
     recognition.onerror = () => setIsListening(false);
@@ -116,19 +122,7 @@ export default function InterviewPage() {
       recorder.start();
       mediaRecorderRef.current = recorder;
 
-      // Initialize AI interview
-      const initRes = await axios.post("http://localhost:5000/ai-aspect-init", {
-        interview_id: interviewId,
-      });
-
-      const firstQ =
-        initRes.data.questions?.[0]?.question || "Tell me about yourself.";
-
-      setAiQuestion(firstQ);
-      currentQuestionRef.current = firstQ;
-      nextIndexRef.current = initRes.data.next_index || 1;
-
-      speakQuestion(firstQ);
+      start_listening();
     } catch (err) {
       alert("Unable to access camera/mic");
       setRecording(false);
@@ -139,6 +133,10 @@ export default function InterviewPage() {
     setRecording(false);
     stop_listening();
     window.speechSynthesis.cancel();
+
+    // Stop all media tracks immediately
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
 
     if (mediaRecorderRef.current) {
       return new Promise((resolve) => {
@@ -164,10 +162,9 @@ export default function InterviewPage() {
         };
 
         mediaRecorderRef.current.stop();
+        mediaRecorderRef.current = null;
       });
     }
-
-    streamRef.current?.getTracks().forEach((t) => t.stop());
   };
 
   const start_listening = () => {
@@ -176,6 +173,7 @@ export default function InterviewPage() {
     shouldBeListeningRef.current = true;
     currentTranscriptRef.current = "";
     setTranscriptDisplay("");
+    setSilenceLeft(5);
 
     try {
       recognitionRef.current.start();
@@ -185,6 +183,7 @@ export default function InterviewPage() {
 
   const stop_listening = () => {
     shouldBeListeningRef.current = false;
+    setSilenceLeft(5);
 
     if (recognitionRef.current) {
       try {
@@ -196,44 +195,60 @@ export default function InterviewPage() {
     setIsListening(false);
   };
 
-  const submit_answer = async () => {
-    const finalText = currentTranscriptRef.current.trim();
+  // ---------------------- AUTO SUBMIT ON SILENCE ----------------------
+  useEffect(() => {
+    if (!recording || !isListening) return;
 
-    if (!finalText) {
-      alert("Please speak before submitting.");
-      return;
-    }
+    const silenceInterval = setInterval(() => {
+      setSilenceLeft((prev) => {
+        if (prev <= 1) {
+          submit_answer(true); // true = send "no response" if empty
+          return 5;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(silenceInterval);
+  }, [recording, isListening]);
+
+  const submit_answer = async (sendNoResponse = false) => {
+    let finalText = currentTranscriptRef.current.trim();
+    if (!finalText && sendNoResponse) finalText = "no response";
 
     stop_listening();
     setIsProcessing(true);
 
     try {
-      const questionAsked = currentQuestionRef.current;
+      if (finalText) {
+        const questionAsked = currentQuestionRef.current;
+        await updateQuestions(questionAsked, finalText);
 
-      await updateQuestions(questionAsked, finalText);
+        const aiRes = await axios.post("http://localhost:5000/ai-aspect", {
+          interview_id: interviewId,
+          answer: finalText,
+          question_index: nextIndexRef.current,
+        });
 
-      const aiRes = await axios.post("http://localhost:5000/ai-aspect", {
-        interview_id: interviewId,
-        answer: finalText,
-        question_index: nextIndexRef.current,
-      });
+        currentTranscriptRef.current = "";
+        setTranscriptDisplay("");
 
-      currentTranscriptRef.current = "";
-      setTranscriptDisplay("");
+        if (aiRes.data.finished) {
+          setAiQuestion("Interview finished.");
+          await stop_recording();
+          return;
+        }
 
-      if (aiRes.data.finished) {
-        setAiQuestion("Interview finished.");
-        await stop_recording();
-        return;
+        const nextQ = aiRes.data.question;
+        setAiQuestion(nextQ);
+        currentQuestionRef.current = nextQ;
+        nextIndexRef.current = aiRes.data.next_index;
+
+        setIsProcessing(false);
+        speakQuestion(nextQ);
+      } else {
+        setIsProcessing(false);
       }
-
-      const nextQ = aiRes.data.question;
-      setAiQuestion(nextQ);
-      currentQuestionRef.current = nextQ;
-      nextIndexRef.current = aiRes.data.next_index;
-
-      setIsProcessing(false);
-      speakQuestion(nextQ);
     } catch (e) {
       console.error(e);
       setIsProcessing(false);
@@ -247,6 +262,10 @@ export default function InterviewPage() {
 
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
+    utter.onend = () => {
+      // start recording automatically after speech finishes
+      start_recording();
+    };
     window.speechSynthesis.speak(utter);
   };
 
@@ -276,6 +295,11 @@ export default function InterviewPage() {
       <header className={styles.header}>
         <h2>Technical Interview</h2>
         <div className={styles.timerBadge}>⏱ {formatTime(timeLeft)}</div>
+        {recording && isListening && (
+          <div className={styles.silenceBadge}>
+            Silence countdown: {silenceLeft}s
+          </div>
+        )}
       </header>
 
       <main className={styles.mainContent}>
@@ -323,28 +347,27 @@ export default function InterviewPage() {
 
           <div className={styles.controls}>
             {!recording ? (
-              <button className={styles.btnStart} onClick={start_recording}>
+              <button
+                className={styles.btnStart}
+                onClick={async () => {
+                  // Initialize AI interview and play first question
+                  const initRes = await axios.post("http://localhost:5000/ai-aspect-init", {
+                    interview_id: interviewId,
+                  });
+                  const firstQ =
+                    initRes.data.questions?.[0]?.question || "Tell me about yourself.";
+                  setAiQuestion(firstQ);
+                  currentQuestionRef.current = firstQ;
+                  nextIndexRef.current = initRes.data.next_index || 1;
+
+                  speakQuestion(firstQ);
+                }}
+              >
                 Start Interview
               </button>
             ) : (
               <div className={styles.actionButtons}>
-                <button className={styles.btnStart} onClick={start_listening}>
-                  🎙 Start Recording
-                </button>
-
-                <button className={styles.btnTerminate} onClick={stop_listening}>
-                  🛑 Stop Recording
-                </button>
-
-                <button
-                  className={styles.btnSubmit}
-                  onClick={submit_answer}
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? "Processing..." : "Submit Answer"}
-                </button>
-
-                <button className={styles.btnTerminate} onClick={() => stop_recording()}>
+                <button className={styles.btnTerminate} onClick={stop_recording}>
                   Finish Interview
                 </button>
               </div>
