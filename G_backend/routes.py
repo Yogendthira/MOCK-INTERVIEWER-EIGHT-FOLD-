@@ -63,18 +63,35 @@ def patch_questions():
     try:
         data = request.json
         interview_id = data.get('interview_id')
-        questions = data.get('questions')  # Expecting [[question, answer, review], ...]
+        question = data.get('question')
+        answer = data.get('answer')
 
-        if not interview_id or questions is None:
-            return jsonify({"error": "interview_id and questions are required"}), 400
+        if not interview_id or question is None or answer is None:
+            return jsonify({"error": "interview_id, question, and answer are required"}), 400
 
-        result = db.update_questions(interview_id, questions)
-        if result.matched_count == 0:
+        # Prepare the question entry with dummy review
+        question_entry = [question, answer, ""]  # review left empty for now
+
+        # Use your helper function to push to 'questions_asked'
+        # First fetch current questions
+        interview = interviews_collection.find_one({"_id": ObjectId(interview_id)})
+        if not interview:
             return jsonify({"error": "Interview not found"}), 404
 
-        return jsonify({"message": "Questions updated successfully"}), 200
+        current_questions = interview.get("questions_asked", [])
+        current_questions.append(question_entry)
+
+        # Update the document
+        result = interviews_collection.update_one(
+            {"_id": ObjectId(interview_id)},
+            {"$set": {"questions_asked": current_questions}}
+        )
+
+        return jsonify({"message": "Question updated successfully"}), 200
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @routes.route('/end-interview-summary', methods=['PATCH'])
 def patch_summary():
@@ -149,7 +166,7 @@ def ai_aspect():
         ]
 
         if question_index >= len(mock_questions):
-            return jsonify({"question": None, "finished": True}), 200
+            return jsonify({"question": None, "finished": False}), 200
 
         return jsonify({"question": mock_questions[question_index], "next_index": question_index + 1}), 200
     except Exception as e:
@@ -177,3 +194,33 @@ def store_video():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@routes.route("/generate-summary", methods=["POST", "OPTIONS"])
+def generate_summary():
+    # Handle CORS preflight OPTIONS request
+    if request.method == "OPTIONS":
+        response = jsonify({"message": "OK"})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "*")
+        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+        return response
+
+    data = request.get_json()
+    interview_id = data.get("interview_id")
+
+    print(f"[DEBUG] Generating summary for interview: {interview_id}")
+
+    # ---- Dummy summary data ----
+    dummy_summary = {
+        "interview_id": interview_id,
+        "summary": "This is a placeholder summary. The real AI summary will be generated here.",
+        "strengths": ["Good communication", "Strong technical foundation"],
+        "improvements": ["More concise answers", "Explain reasoning more clearly"]
+    }
+
+    # Return a dummy response
+    response = jsonify(dummy_summary)
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response
+
+

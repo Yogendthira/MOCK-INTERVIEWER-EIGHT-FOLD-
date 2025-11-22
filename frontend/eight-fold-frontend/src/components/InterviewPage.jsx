@@ -8,9 +8,7 @@ export default function InterviewPage() {
   const navigate = useNavigate();
   const interviewId = location.state?.interviewId;
 
-  // -----------------------------------------------------
-  // STATE
-  // -----------------------------------------------------
+  // ---------------------- STATE ----------------------
   const [aiQuestion, setAiQuestion] = useState("Press Start to begin...");
   const [isProcessing, setIsProcessing] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -18,12 +16,9 @@ export default function InterviewPage() {
   const [timeLeft, setTimeLeft] = useState(900);
   const [transcriptDisplay, setTranscriptDisplay] = useState("");
 
-  // -----------------------------------------------------
-  // REFS
-  // -----------------------------------------------------
+  // ---------------------- REFS ----------------------
   const recognitionRef = useRef(null);
   const shouldBeListeningRef = useRef(false);
-
   const currentTranscriptRef = useRef("");
   const currentQuestionRef = useRef("");
   const nextIndexRef = useRef(0);
@@ -33,16 +28,14 @@ export default function InterviewPage() {
   const mediaRecorderRef = useRef(null);
   const videoChunksRef = useRef([]);
 
-  // -----------------------------------------------------
-  // TIMER
-  // -----------------------------------------------------
+  // ---------------------- TIMER ----------------------
   useEffect(() => {
     if (!recording) return;
 
     const interval = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          finishInterview();
+          finishInterview(true);
           return 0;
         }
         return prev - 1;
@@ -52,9 +45,7 @@ export default function InterviewPage() {
     return () => clearInterval(interval);
   }, [recording]);
 
-  // -----------------------------------------------------
-  // SPEECH RECOGNITION
-  // -----------------------------------------------------
+  // ---------------------- SPEECH RECOGNITION ----------------------
   const initSpeechRecognition = useCallback(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -75,29 +66,19 @@ export default function InterviewPage() {
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const text = event.results[i][0].transcript;
-
-        if (event.results[i].isFinal) {
-          final += text + " ";
-        } else {
-          interim += text;
-        }
+        if (event.results[i].isFinal) final += text + " ";
+        else interim += text;
       }
 
-      if (final) {
-        currentTranscriptRef.current += final;
-      }
+      if (final) currentTranscriptRef.current += final;
 
       setTranscriptDisplay(currentTranscriptRef.current + interim);
     };
 
-    recognition.onerror = (e) => {
-      console.warn("SpeechRecognition error:", e.error);
-      setIsListening(false);
-    };
+    recognition.onerror = () => setIsListening(false);
 
     recognition.onend = () => {
       setIsListening(false);
-
       if (shouldBeListeningRef.current) {
         try {
           recognition.start();
@@ -112,8 +93,6 @@ export default function InterviewPage() {
   const startListening = () => {
     if (!recognitionRef.current)
       recognitionRef.current = initSpeechRecognition();
-
-    if (!recognitionRef.current) return;
 
     shouldBeListeningRef.current = true;
     currentTranscriptRef.current = "";
@@ -138,26 +117,33 @@ export default function InterviewPage() {
     setIsListening(false);
   };
 
-  // -----------------------------------------------------
-  // TEXT TO SPEECH
-  // -----------------------------------------------------
+  // ---------------------- TEXT TO SPEECH ----------------------
   const speakQuestion = (text) => {
     if (!text) return;
-
     stopListening();
+
     window.speechSynthesis.cancel();
-
     const utter = new SpeechSynthesisUtterance(text);
-
-    // Do NOT auto-resume listening
-    utter.onend = () => {};
-
     window.speechSynthesis.speak(utter);
   };
 
-  // -----------------------------------------------------
-  // SUBMIT ANSWER
-  // -----------------------------------------------------
+  // ---------------------- PATCH ANSWER TO BACKEND ----------------------
+  const updateQuestions = async (question, answer) => {
+    if (!interviewId) return;
+
+    try {
+      const res = await axios.patch(
+        "http://localhost:5000/update-interview-questions",
+        { interview_id: interviewId, question, answer } // backend adds dummy review
+      );
+
+      if (res.status === 200) console.log("Questions updated successfully");
+    } catch (err) {
+      console.error("Error updating questions:", err);
+    }
+  };
+
+  // ---------------------- SUBMIT ANSWER ----------------------
   const handleSubmitAnswer = async () => {
     const finalText = currentTranscriptRef.current.trim();
 
@@ -172,28 +158,22 @@ export default function InterviewPage() {
     try {
       const questionAsked = currentQuestionRef.current;
 
-      const updatePromise = axios.patch(
-        "http://localhost:5000/update-interview-questions",
-        {
-          interview_id: interviewId,
-          questions: [[questionAsked, finalText, ""]],
-        }
-      );
+      // PATCH user answer to backend
+      await updateQuestions(questionAsked, finalText);
 
-      const aiPromise = axios.post("http://localhost:5000/ai-aspect", {
+      // Request AI next question
+      const aiRes = await axios.post("http://localhost:5000/ai-aspect", {
         interview_id: interviewId,
         answer: finalText,
         question_index: nextIndexRef.current,
       });
 
-      const [, aiRes] = await Promise.all([updatePromise, aiPromise]);
-
       currentTranscriptRef.current = "";
       setTranscriptDisplay("");
 
       if (aiRes.data.finished) {
-        setAiQuestion("Interview finished. Thank you.");
-        finishInterview();
+        setAiQuestion("Interview finished.");
+        finishInterview(false);
         return;
       }
 
@@ -210,9 +190,7 @@ export default function InterviewPage() {
     }
   };
 
-  // -----------------------------------------------------
-  // START INTERVIEW
-  // -----------------------------------------------------
+  // ---------------------- START INTERVIEW ----------------------
   const startInterview = async () => {
     try {
       setRecording(true);
@@ -221,7 +199,6 @@ export default function InterviewPage() {
         video: true,
         audio: true,
       });
-
       streamRef.current = stream;
 
       if (videoRef.current) {
@@ -239,10 +216,9 @@ export default function InterviewPage() {
       recorder.start();
       mediaRecorderRef.current = recorder;
 
-      const initRes = await axios.post(
-        "http://localhost:5000/ai-aspect-init",
-        { interview_id: interviewId }
-      );
+      const initRes = await axios.post("http://localhost:5000/ai-aspect-init", {
+        interview_id: interviewId,
+      });
 
       const firstQ =
         initRes.data.questions?.[0]?.question || "Tell me about yourself.";
@@ -253,54 +229,52 @@ export default function InterviewPage() {
 
       speakQuestion(firstQ);
     } catch (err) {
-      console.error(err);
       alert("Unable to access camera/mic");
       setRecording(false);
     }
   };
 
-  // -----------------------------------------------------
-  // FINISH INTERVIEW
-  // -----------------------------------------------------
-  const finishInterview = useCallback(async () => {
-    setRecording(false);
-    stopListening();
-    window.speechSynthesis.cancel();
+  // ---------------------- FINISH INTERVIEW ----------------------
+  const finishInterview = useCallback(
+    async (autoEnded = false) => {
+      setRecording(false);
+      stopListening();
+      window.speechSynthesis.cancel();
 
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
 
-      mediaRecorderRef.current.onstop = async () => {
-        const blob = new Blob(videoChunksRef.current, { type: "video/webm" });
-        const file = new File([blob], "interview.webm", { type: "video/webm" });
+        mediaRecorderRef.current.onstop = async () => {
+          const blob = new Blob(videoChunksRef.current, { type: "video/webm" });
+          const file = new File([blob], "interview.webm", { type: "video/webm" });
 
-        const formData = new FormData();
-        formData.append("interview_id", interviewId);
-        formData.append("video", file);
+          const formData = new FormData();
+          formData.append("interview_id", interviewId);
+          formData.append("video", file);
 
-        try {
-          await axios.post("http://localhost:5000/store-video", formData);
-          await axios.post("http://localhost:5000/generate-summary", {
-            interview_id: interviewId,
-          });
+          try {
+            await axios.post("http://localhost:5000/store-video", formData);
+            await axios.post("http://localhost:5000/generate-summary", {
+              interview_id: interviewId,
+            });
 
-          alert("Interview saved!");
-          navigate("/dashboard");
-        } catch (e) {
-          console.error(e);
-        }
-      };
-    }
+            navigate("/ReviewPage", { state: { interviewId } });
+          } catch (e) {
+            console.error(e);
+          }
+        };
+      }
 
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-  }, [interviewId, navigate]);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    },
+    [interviewId, navigate]
+  );
 
-  // -----------------------------------------------------
-  // UI + LAYOUT
-  // -----------------------------------------------------
+  // ---------------------- TIME FORMAT ----------------------
   const formatTime = (s) =>
     `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
+  // ---------------------- RENDER ----------------------
   return (
     <div className={styles.pageContainer}>
       <header className={styles.header}>
@@ -332,16 +306,11 @@ export default function InterviewPage() {
           >
             <div className={styles.transcriptHeader}>
               <h4>Your Transcript</h4>
-
-              {isListening && (
-                <span className={styles.listeningBadge}>🎙 Listening...</span>
-              )}
+              {isListening && <span className={styles.listeningBadge}>🎙 Listening...</span>}
             </div>
 
             <div className={styles.transcriptText}>
-              {transcriptDisplay ? (
-                transcriptDisplay
-              ) : (
+              {transcriptDisplay || (
                 <span className={styles.placeholder}>
                   Press Start Recording and begin speaking...
                 </span>
@@ -353,12 +322,7 @@ export default function InterviewPage() {
         {/* RIGHT PANEL */}
         <section className={styles.rightPanel}>
           <div className={styles.videoWrapper}>
-            <video
-              ref={videoRef}
-              className={styles.videoFeed}
-              muted
-              playsInline
-            />
+            <video ref={videoRef} className={styles.videoFeed} muted playsInline />
           </div>
 
           <div className={styles.controls}>
@@ -368,17 +332,14 @@ export default function InterviewPage() {
               </button>
             ) : (
               <div className={styles.actionButtons}>
-                {/* Start Recording */}
                 <button className={styles.btnStart} onClick={startListening}>
                   🎙 Start Recording
                 </button>
 
-                {/* Stop Recording */}
                 <button className={styles.btnTerminate} onClick={stopListening}>
                   🛑 Stop Recording
                 </button>
 
-                {/* Submit Answer */}
                 <button
                   className={styles.btnSubmit}
                   onClick={handleSubmitAnswer}
@@ -387,10 +348,9 @@ export default function InterviewPage() {
                   {isProcessing ? "Processing..." : "Submit Answer"}
                 </button>
 
-                {/* Finish Interview */}
                 <button
                   className={styles.btnTerminate}
-                  onClick={finishInterview}
+                  onClick={() => finishInterview(false)}
                 >
                   Finish Interview
                 </button>
