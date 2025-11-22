@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import ProfileUploader from './components/ProfileUploader.jsx';
+import ProfileUploader from './components/InterviewForm.jsx';
+import InterviewPage from './components/InterviewPage.jsx';
 import './App.css';
 
 function App() {
@@ -9,6 +10,7 @@ function App() {
 
         <Route path="/" element={<ProfileUploader/>} />
         <Route path="/profile" element={<ProfileUploader/>} />
+        <Route path="/InterviewPage" element={<InterviewPage/>} />
 
       </Routes>
     </BrowserRouter>

@@ -1,84 +1,179 @@
-from flask import Blueprint, jsonify
-import os
-
-from database.db import users_collection
-from database.db import test_collection
-import bcrypt
-
-from PyPDF2 import PdfReader
-import uuid
 from flask import Blueprint, request, jsonify
+from database import db
+from bson.objectid import ObjectId
 
+from database.db import interviews_collection
 
-routes = Blueprint('G_backend', __name__)
+from gridfs import GridFS
 
-@routes.route('/test', methods=['GET'])
-def test():
-    return jsonify({'response': 'Test route is working!'})
+routes = Blueprint('routes', __name__)
 
-@routes.route('/test-db', methods=['GET'])
-def test_db():
+# Ensure we have access to MongoDB client
+client = db.client  # db.client should be MongoClient instance
+database = client["interviewAssistantDB"]
+
+# Collections
+interviews_collection = database["interviews"]
+
+# Initialize GridFS
+fs = GridFS(database)
+
+routes = Blueprint('routes', __name__)
+
+@routes.route('/init_interview', methods=['POST'])
+def init_interview():
     try:
-        # Insert sample document
-        result = test_collection.insert_one({
-            "message": "Hello from test-db route",
-            "status": "working"
-        })
+        resume_file = request.files.get('resume')
+        job_desc = request.form.get('job_description', '')
+        interview_type = request.form.get('interview_type', '')
+        duration = request.form.get('duration', '')
 
-        return jsonify({
-            "message": "Blueprint route works",
-            "inserted_id": str(result.inserted_id)
-        })
+        if not resume_file:
+            return jsonify({"error": "Resume file is required"}), 400
 
+        # Validate interview_type
+        valid_types = ["technical", "technical advanced", "managerial", "personal"]
+        if interview_type not in valid_types:
+            return jsonify({"error": f"Invalid interview type. Must be one of {valid_types}"}), 400
+
+        # Validate duration
+        valid_durations = ["15 minutes", "30 minutes", "45 minutes", "60 minutes"]
+        if duration not in valid_durations:
+            return jsonify({"error": f"Invalid duration. Must be one of {valid_durations}"}), 400
+
+        resume_data = resume_file.read()
+        resume_filename = resume_file.filename
+
+        # Insert into DB (assuming insert_interview supports extra fields)
+        result = db.insert_interview(
+            resume_data=resume_data,
+            resume_filename=resume_filename,
+            job_description=job_desc,
+            interview_type=interview_type,
+            duration=duration
+        )
+
+        return jsonify({"message": "Interview initialized", "inserted_id": str(result.inserted_id)}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
-@routes.route('/get-and-process-resume', methods=['POST'])
-def get_and_process_resume():
+
+
+@routes.route('/update-interview-questions', methods=['PATCH'])
+def patch_questions():
     try:
-        if 'file' not in request.files:
-            return jsonify({"error": "No file provided"}), 400
-        
-        file = request.files['file']
+        data = request.json
+        interview_id = data.get('interview_id')
+        questions = data.get('questions')  # Expecting [[question, answer, review], ...]
 
-        if file.filename == '':
-            return jsonify({"error": "Empty filename"}), 400
-        
-        if not file.filename.lower().endswith('.pdf'):
-            return jsonify({"error": "Only PDF files are allowed"}), 400
+        if not interview_id or questions is None:
+            return jsonify({"error": "interview_id and questions are required"}), 400
 
-        # Step 1: Extract text from PDF
-        reader = PdfReader(file)
-        extracted_text = ""
+        result = db.update_questions(interview_id, questions)
+        if result.matched_count == 0:
+            return jsonify({"error": "Interview not found"}), 404
 
-        for page in reader.pages:
-            extracted_text += page.extract_text() or ""
+        return jsonify({"message": "Questions updated successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        extracted_text = extracted_text.strip()
+@routes.route('/end-interview-summary', methods=['PATCH'])
+def patch_summary():
+    try:
+        data = request.json
+        interview_id = data.get('interview_id')
+        overall_review = data.get('overall_review', "")
+        time_taken = data.get('time_taken', "")
+        summarized = data.get('summarized', "")
 
-        if not extracted_text:
-            return jsonify({"error": "Unable to extract text from PDF"}), 500
+        if not interview_id:
+            return jsonify({"error": "interview_id is required"}), 400
 
-        # Step 2: Process the extracted text (Placeholder for your logic)
-        # Example processing — you can replace this with LLM call, NLP, etc.
-        processed_json = {
-            "resume_id": str(uuid.uuid4()),
-            "raw_text": extracted_text,
-            "summary": extracted_text[:300],  # sample "processing"
-            "skills_detected": [],            # fill with NLP later
-            "status": "processed"
+        result = db.end_interview(interview_id, overall_review, time_taken, summarized)
+        if result.matched_count == 0:
+            return jsonify({"error": "Interview not found"}), 404
+
+        return jsonify({"message": "Interview summary updated successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@routes.route('/fetch-interview/<interview_id>', methods=['GET'])
+def fetch_interview(interview_id):
+    try:
+        interview = interviews_collection.find_one({"_id": ObjectId(interview_id)})
+        if not interview:
+            return jsonify({"error": "Interview not found"}), 404
+
+        # Convert GridFS reference to filename only
+        interview_data = {
+            "name": interview.get("name"),
+            "skills": interview.get("skills"),
+            "job_description": interview.get("job_description"),
+            "interview_type": interview.get("interview_type"),
+            "duration": interview.get("duration"),
+            "questions_asked": interview.get("questions_asked", []),
         }
-
-        # Step 3: Store in MongoDB
-        inserted = users_collection.insert_one(processed_json)
-
-        return jsonify({
-            "message": "Resume processed successfully",
-            "resume_id": processed_json["resume_id"],
-            "inserted_id": str(inserted.inserted_id),
-            "data": processed_json
-        })
-
+        return jsonify(interview_data), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@routes.route('/ai-aspect-init', methods=['POST'])
+def ai_aspect_init():
+    try:
+        data = request.json
+        interview_id = data.get("interview_id")
+        # In future: call AI model here to generate first question
+        # For now, mock 4 questions
+        initial_questions = [
+            {"question": "Tell me about yourself."},
+            {"question": "What are your strengths?"},
+            {"question": "Describe a challenging project you worked on."},
+            {"question": "Where do you see yourself in 5 years?"}
+        ]
+        return jsonify({"questions": initial_questions, "next_index": 0}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+@routes.route('/ai-aspect', methods=['POST'])
+def ai_aspect():
+    try:
+        data = request.json
+        interview_id = data.get("interview_id")
+        user_transcript = data.get("answer")  # transcript of user speech
+        question_index = data.get("question_index", 0)
+
+        # For now: just return next question in the list
+        mock_questions = [
+            "Tell me about yourself.",
+            "What are your strengths?",
+            "Describe a challenging project you worked on.",
+            "Where do you see yourself in 5 years?"
+        ]
+
+        if question_index >= len(mock_questions):
+            return jsonify({"question": None, "finished": True}), 200
+
+        return jsonify({"question": mock_questions[question_index], "next_index": question_index + 1}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@routes.route('/store-video', methods=['POST'])
+def store_video():
+    try:
+        interview_id = request.form.get("interview_id")
+        video_file = request.files.get("video")
+
+        if not interview_id or not video_file:
+            return jsonify({"error": "Interview ID and video file are required"}), 400
+
+        # Save video in GridFS
+        file_id = fs.put(video_file.read(), filename=video_file.filename)
+
+        # Update interview document with video reference
+        interviews_collection.update_one(
+            {"_id": ObjectId(interview_id)},
+            {"$set": {"video_file_id": file_id, "video_filename": video_file.filename}}
+        )
+
+        return jsonify({"message": "Video stored successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
