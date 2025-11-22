@@ -20,7 +20,7 @@ const ReviewPage = () => {
 
     const fetchInterview = async () => {
       try {
-        const response = await axios.get("/api/get_interview", {
+        const response = await axios.get("http://localhost:5000/get_interview", {
           params: { interview_id: interviewId },
         });
         setInterview(response.data);
@@ -42,29 +42,44 @@ const ReviewPage = () => {
   const {
     name,
     resume_filename,
+    resume_file,  // Base64 string
     skills,
     job_description,
     interview_type,
     duration,
     questions_asked,
     video_filename,
-    video_file_id
+    video_file   // Base64 string
   } = interview;
+
+  // Convert Base64 to Data URL
+  const resumeUrl = resume_file ? `data:application/pdf;base64,${resume_file}` : null;
+  const videoUrl = video_file ? `data:video/mp4;base64,${video_file}` : null;
 
   return (
     <div className={styles.dashboard}>
-      {/* Left Container: Video + Sharing */}
+      {/* Left Container: Video + Resume Preview */}
       <div className={styles.leftContainer}>
         <h2 className={styles.sectionTitle}>Interview Video</h2>
-        {video_file_id ? (
-          <video
-            className={styles.videoPlayer}
-            controls
-            src={`/api/videos/${video_file_id}`}
-          />
+        {videoUrl ? (
+          <video className={styles.videoPlayer} controls src={videoUrl} />
         ) : (
           <p>No video available</p>
         )}
+
+        <h2 className={styles.sectionTitle}>Resume Preview</h2>
+        {resumeUrl ? (
+          <iframe
+            src={resumeUrl}
+            title="Resume Preview"
+            width="100%"
+            height="500px"
+            style={{ border: "1px solid #ccc" }}
+          />
+        ) : (
+          <p>No resume available</p>
+        )}
+
         <div className={styles.shareSection}>
           <h3>Share this interview</h3>
           <button className={styles.shareBtn}>Copy Link</button>
@@ -95,12 +110,13 @@ const ReviewPage = () => {
         <p><strong>Duration:</strong> {duration}</p>
 
         <div className={styles.questionsSection}>
-          <h2>Questions & Answers</h2>
+          <h2>Questions, Answers & Review</h2>
           {questions_asked && questions_asked.length > 0 ? (
             questions_asked.map((q, index) => (
               <div key={index} className={styles.questionBlock}>
                 <p className={styles.question}><strong>Q:</strong> {q[0]}</p>
                 <p className={styles.answer}><strong>A:</strong> {q[1] || "No answer provided"}</p>
+                <p className={styles.review}><strong>Review:</strong> {q[2] || "No review yet"}</p>
               </div>
             ))
           ) : (

@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from database import db
+import base64
 from bson.objectid import ObjectId
 
 from database.db import interviews_collection
@@ -224,3 +225,55 @@ def generate_summary():
     return response
 
 
+@routes.route('/get_interview', methods=['GET'])
+def get_interview():
+    try:
+        interview_id = request.args.get("interview_id")
+        if not interview_id:
+            return jsonify({"error": "interview_id is required"}), 400
+        if not ObjectId.is_valid(interview_id):
+            return jsonify({"error": "Invalid interview_id"}), 400
+
+        # Fetch interview document
+        interview = interviews_collection.find_one({"_id": ObjectId(interview_id)})
+        if not interview:
+            return jsonify({"error": "Interview not found"}), 404
+
+        # Base64 encode resume_file if exists
+        resume_data = interview.get("resume_file")
+        resume_base64 = base64.b64encode(resume_data).decode("utf-8") if resume_data else None
+
+        # Optional: Base64 encode video (not recommended for large files)
+        video_file_id = interview.get("video_file_id")
+        video_filename = interview.get("video_filename")
+        video_base64 = None
+        if video_file_id:
+            try:
+                grid_out = fs.get(video_file_id)
+                video_base64 = base64.b64encode(grid_out.read()).decode("utf-8")
+            except Exception:
+                video_base64 = None
+
+        # Prepare response
+        response_data = {
+            "_id": str(interview["_id"]),
+            "resume_filename": interview.get("resume_filename"),
+            "resume_file": resume_base64,       # Base64 encoded
+            "name": interview.get("name"),
+            "skills": interview.get("skills", []),
+            "job_description": interview.get("job_description"),
+            "interview_type": interview.get("interview_type"),
+            "duration": interview.get("duration"),
+            "questions_asked": interview.get("questions_asked", []),
+            "overall_review": interview.get("overall_review", ""),
+            "time_taken": interview.get("time_taken", ""),
+            "summarized": interview.get("summarized"),
+            "created_at": interview.get("created_at").isoformat() if interview.get("created_at") else None,
+            "video_filename": video_filename,
+            "video_file": video_base64              # Base64 encoded
+        }
+
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
