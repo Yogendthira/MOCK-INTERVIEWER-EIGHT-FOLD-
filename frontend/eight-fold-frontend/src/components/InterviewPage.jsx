@@ -1,99 +1,108 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import styles from './InterviewPage.module.css';
+import { useEffect, useState, useRef, useCallback } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import axios from "axios";
+import styles from "./InterviewPage.module.css";
 
 export default function InterviewPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const interviewId = location.state?.interviewId;
 
-  // --- State ---
-  const [aiQuestion, setAiQuestion] = useState('Press Start to begin...');
-  const [isProcessing, setIsProcessing] = useState(false); 
-  const [recording, setRecording] = useState(false); // Master switch for the interview session
-  const [isListening, setIsListening] = useState(false); // Status of the microphone specifically
-  const [timeLeft, setTimeLeft] = useState(900); 
-  const [transcriptDisplay, setTranscriptDisplay] = useState(''); 
-  
-  // --- Refs ---
+  // -----------------------------------------------------
+  // STATE
+  // -----------------------------------------------------
+  const [aiQuestion, setAiQuestion] = useState("Press Start to begin...");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(900);
+  const [transcriptDisplay, setTranscriptDisplay] = useState("");
+
+  // -----------------------------------------------------
+  // REFS
+  // -----------------------------------------------------
   const recognitionRef = useRef(null);
+  const shouldBeListeningRef = useRef(false);
+
+  const currentTranscriptRef = useRef("");
+  const currentQuestionRef = useRef("");
+  const nextIndexRef = useRef(0);
+
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
+  const videoChunksRef = useRef([]);
 
-  // Data Refs (to access inside closures)
-  const currentTranscriptRef = useRef(''); 
-  const currentQuestionRef = useRef('');
-  const nextIndexRef = useRef(0);
-  const shouldBeListeningRef = useRef(false); // Helps prevent auto-stop
-
-  // --- 1. Timer ---
+  // -----------------------------------------------------
+  // TIMER
+  // -----------------------------------------------------
   useEffect(() => {
-    let interval = null;
-    if (recording && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            finishInterview();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [recording, timeLeft]);
+    if (!recording) return;
 
-  // --- 2. Speech Recognition Engine ---
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          finishInterview();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [recording]);
+
+  // -----------------------------------------------------
+  // SPEECH RECOGNITION
+  // -----------------------------------------------------
   const initSpeechRecognition = useCallback(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
     if (!SpeechRecognition) {
-      alert("Your browser does not support Speech Recognition. Please use Chrome.");
+      alert("Browser does not support Speech Recognition. Use Chrome.");
       return null;
     }
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = true; // IMPORTANT: Allows speaking for long periods
-    recognition.interimResults = true; // Shows text while speaking
-    recognition.lang = 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
-      let interim = '';
-      let finalChunk = '';
+      let interim = "";
+      let final = "";
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
+        const text = event.results[i][0].transcript;
+
         if (event.results[i].isFinal) {
-          finalChunk += transcript + ' ';
+          final += text + " ";
         } else {
-          interim += transcript;
+          interim += text;
         }
       }
 
-      if (finalChunk) {
-        currentTranscriptRef.current += finalChunk;
+      if (final) {
+        currentTranscriptRef.current += final;
       }
+
       setTranscriptDisplay(currentTranscriptRef.current + interim);
     };
 
-    recognition.onerror = (event) => {
-      console.error("Speech Error:", event.error);
+    recognition.onerror = (e) => {
+      console.warn("SpeechRecognition error:", e.error);
       setIsListening(false);
     };
 
-    // CRITICAL FIX: If it stops unexpectedly, restart it immediately if we should be listening
     recognition.onend = () => {
       setIsListening(false);
+
       if (shouldBeListeningRef.current) {
-        console.log("Restarting recognition...");
         try {
           recognition.start();
           setIsListening(true);
-        } catch (e) {
-          console.error("Restart failed:", e);
-        }
+        } catch {}
       }
     };
 
@@ -101,168 +110,196 @@ export default function InterviewPage() {
   }, []);
 
   const startListening = () => {
-    if (!recognitionRef.current) recognitionRef.current = initSpeechRecognition();
-    
+    if (!recognitionRef.current)
+      recognitionRef.current = initSpeechRecognition();
+
+    if (!recognitionRef.current) return;
+
     shouldBeListeningRef.current = true;
+    currentTranscriptRef.current = "";
+    setTranscriptDisplay("");
+
     try {
       recognitionRef.current.start();
       setIsListening(true);
-    } catch (e) {
-      // Sometimes it throws if already started, just ignore
-      console.log("Already started or error:", e);
-    }
+    } catch {}
   };
 
   const stopListening = () => {
     shouldBeListeningRef.current = false;
-    if (recognitionRef.current) recognitionRef.current.stop();
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+    }
+
+    setTranscriptDisplay(currentTranscriptRef.current);
     setIsListening(false);
   };
 
-  // --- 3. Text to Speech ---
+  // -----------------------------------------------------
+  // TEXT TO SPEECH
+  // -----------------------------------------------------
   const speakQuestion = (text) => {
     if (!text) return;
-    
-    // Stop listening while AI speaks (so AI doesn't hear itself)
+
     stopListening();
-    
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    utterance.onend = () => {
-      // Resume listening automatically after AI finishes
-      if (recording) startListening();
-    };
-    
-    window.speechSynthesis.speak(utterance);
+
+    const utter = new SpeechSynthesisUtterance(text);
+
+    // Do NOT auto-resume listening
+    utter.onend = () => {};
+
+    window.speechSynthesis.speak(utter);
   };
 
-  // --- 4. Submit Button Logic ---
+  // -----------------------------------------------------
+  // SUBMIT ANSWER
+  // -----------------------------------------------------
   const handleSubmitAnswer = async () => {
-    // 1. Grab text
-    const answerText = currentTranscriptRef.current + transcriptDisplay.replace(currentTranscriptRef.current, '');
-    
-    if (!answerText.trim()) {
-      alert("Transcript is empty. Please speak before submitting.");
+    const finalText = currentTranscriptRef.current.trim();
+
+    if (!finalText) {
+      alert("Please speak before submitting.");
       return;
     }
 
-    // 2. Stop listening temporarily while processing
     stopListening();
     setIsProcessing(true);
 
-    const questionAsked = currentQuestionRef.current;
-
     try {
-      // 3. Send requests
-      const updatePromise = axios.patch('http://localhost:5000/update-interview-questions', {
+      const questionAsked = currentQuestionRef.current;
+
+      const updatePromise = axios.patch(
+        "http://localhost:5000/update-interview-questions",
+        {
+          interview_id: interviewId,
+          questions: [[questionAsked, finalText, ""]],
+        }
+      );
+
+      const aiPromise = axios.post("http://localhost:5000/ai-aspect", {
         interview_id: interviewId,
-        questions: [[questionAsked, answerText, '']] 
+        answer: finalText,
+        question_index: nextIndexRef.current,
       });
 
-      const aiPromise = axios.post('http://localhost:5000/ai-aspect', {
-        interview_id: interviewId,
-        answer: answerText,
-        question_index: nextIndexRef.current
-      });
+      const [, aiRes] = await Promise.all([updatePromise, aiPromise]);
 
-      const [_, aiRes] = await Promise.all([updatePromise, aiPromise]);
+      currentTranscriptRef.current = "";
+      setTranscriptDisplay("");
 
-      // 4. Reset Text Buffers
-      currentTranscriptRef.current = '';
-      setTranscriptDisplay('');
-
-      // 5. Handle Next Step
       if (aiRes.data.finished) {
         setAiQuestion("Interview finished. Thank you.");
         finishInterview();
-      } else {
-        const newQuestion = aiRes.data.question;
-        setAiQuestion(newQuestion);
-        currentQuestionRef.current = newQuestion;
-        nextIndexRef.current = aiRes.data.next_index;
-        
-        setIsProcessing(false);
-        // This will speak, then restart listening automatically
-        speakQuestion(newQuestion);
+        return;
       }
 
-    } catch (error) {
-      console.error("Error submitting:", error);
+      const nextQ = aiRes.data.question;
+      setAiQuestion(nextQ);
+      currentQuestionRef.current = nextQ;
+      nextIndexRef.current = aiRes.data.next_index;
+
       setIsProcessing(false);
-      startListening(); // Resume if error
+      speakQuestion(nextQ);
+    } catch (e) {
+      console.error(e);
+      setIsProcessing(false);
     }
   };
 
-  // --- 5. Start / Finish Interview ---
+  // -----------------------------------------------------
+  // START INTERVIEW
+  // -----------------------------------------------------
   const startInterview = async () => {
     try {
       setRecording(true);
 
-      // Camera
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
       streamRef.current = stream;
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
       }
 
-      // Video Recorder
       const recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
+      videoChunksRef.current = [];
+
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+        if (e.data.size > 0) videoChunksRef.current.push(e.data);
       };
+
       recorder.start();
       mediaRecorderRef.current = recorder;
 
-      // Fetch First Question
-      const initRes = await axios.post('http://localhost:5000/ai-aspect-init', { interview_id: interviewId });
-      const firstQuestion = initRes.data.questions?.[0]?.question || "Tell me about yourself.";
-      
-      setAiQuestion(firstQuestion);
-      currentQuestionRef.current = firstQuestion;
+      const initRes = await axios.post(
+        "http://localhost:5000/ai-aspect-init",
+        { interview_id: interviewId }
+      );
+
+      const firstQ =
+        initRes.data.questions?.[0]?.question || "Tell me about yourself.";
+
+      setAiQuestion(firstQ);
+      currentQuestionRef.current = firstQ;
       nextIndexRef.current = initRes.data.next_index || 1;
 
-      // Speak & Start Listen Loop
-      speakQuestion(firstQuestion);
-
+      speakQuestion(firstQ);
     } catch (err) {
-      console.error("Start Error:", err);
-      alert("Could not access Camera/Microphone.");
+      console.error(err);
+      alert("Unable to access camera/mic");
       setRecording(false);
     }
   };
 
+  // -----------------------------------------------------
+  // FINISH INTERVIEW
+  // -----------------------------------------------------
   const finishInterview = useCallback(async () => {
     setRecording(false);
     stopListening();
     window.speechSynthesis.cancel();
 
-    // Stop Recorder & Save
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
+
       mediaRecorderRef.current.onstop = async () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'video/webm' });
-        const file = new File([blob], 'interview.webm', { type: 'video/webm' });
+        const blob = new Blob(videoChunksRef.current, { type: "video/webm" });
+        const file = new File([blob], "interview.webm", { type: "video/webm" });
+
         const formData = new FormData();
-        formData.append('interview_id', interviewId);
-        formData.append('video', file);
+        formData.append("interview_id", interviewId);
+        formData.append("video", file);
 
         try {
-          await axios.post('http://localhost:5000/store-video', formData);
-          await axios.post('http://localhost:5000/generate-summary', { interview_id: interviewId });
-          alert("Interview Saved Successfully!");
-          navigate('/dashboard');
-        } catch(e) { console.error(e); }
+          await axios.post("http://localhost:5000/store-video", formData);
+          await axios.post("http://localhost:5000/generate-summary", {
+            interview_id: interviewId,
+          });
+
+          alert("Interview saved!");
+          navigate("/dashboard");
+        } catch (e) {
+          console.error(e);
+        }
       };
     }
-    
-    // Kill Stream
-    streamRef.current?.getTracks().forEach(t => t.stop());
+
+    streamRef.current?.getTracks().forEach((t) => t.stop());
   }, [interviewId, navigate]);
 
-  const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+  // -----------------------------------------------------
+  // UI + LAYOUT
+  // -----------------------------------------------------
+  const formatTime = (s) =>
+    `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
   return (
     <div className={styles.pageContainer}>
@@ -272,7 +309,6 @@ export default function InterviewPage() {
       </header>
 
       <main className={styles.mainContent}>
-        
         {/* LEFT PANEL */}
         <section className={styles.leftPanel}>
           <div className={styles.aiBubble}>
@@ -280,18 +316,36 @@ export default function InterviewPage() {
             <div className={styles.aiContent}>
               <span className={styles.speakerLabel}>AI Interviewer</span>
               <p className={styles.aiText}>
-                {isProcessing ? <span className={styles.typing}>Evaluating answer...</span> : aiQuestion}
+                {isProcessing ? (
+                  <span className={styles.typing}>Evaluating answer...</span>
+                ) : (
+                  aiQuestion
+                )}
               </p>
             </div>
           </div>
 
-          <div className={`${styles.transcriptBox} ${isListening ? styles.activeBorder : ''}`}>
+          <div
+            className={`${styles.transcriptBox} ${
+              isListening ? styles.activeBorder : ""
+            }`}
+          >
             <div className={styles.transcriptHeader}>
               <h4>Your Transcript</h4>
-              {isListening && <span className={styles.listeningBadge}>🔴 Listening...</span>}
+
+              {isListening && (
+                <span className={styles.listeningBadge}>🎙 Listening...</span>
+              )}
             </div>
+
             <div className={styles.transcriptText}>
-              {transcriptDisplay || <span className={styles.placeholder}>Waiting for your voice...</span>}
+              {transcriptDisplay ? (
+                transcriptDisplay
+              ) : (
+                <span className={styles.placeholder}>
+                  Press Start Recording and begin speaking...
+                </span>
+              )}
             </div>
           </div>
         </section>
@@ -299,7 +353,12 @@ export default function InterviewPage() {
         {/* RIGHT PANEL */}
         <section className={styles.rightPanel}>
           <div className={styles.videoWrapper}>
-             <video ref={videoRef} className={styles.videoFeed} muted playsInline />
+            <video
+              ref={videoRef}
+              className={styles.videoFeed}
+              muted
+              playsInline
+            />
           </div>
 
           <div className={styles.controls}>
@@ -309,23 +368,36 @@ export default function InterviewPage() {
               </button>
             ) : (
               <div className={styles.actionButtons}>
-                {/* SUBMIT BUTTON */}
-                <button 
-                  className={styles.btnSubmit} 
+                {/* Start Recording */}
+                <button className={styles.btnStart} onClick={startListening}>
+                  🎙 Start Recording
+                </button>
+
+                {/* Stop Recording */}
+                <button className={styles.btnTerminate} onClick={stopListening}>
+                  🛑 Stop Recording
+                </button>
+
+                {/* Submit Answer */}
+                <button
+                  className={styles.btnSubmit}
                   onClick={handleSubmitAnswer}
                   disabled={isProcessing}
                 >
-                  {isProcessing ? 'Processing...' : 'Submit Answer'}
+                  {isProcessing ? "Processing..." : "Submit Answer"}
                 </button>
-                
-                <button className={styles.btnTerminate} onClick={finishInterview}>
-                  Finish
+
+                {/* Finish Interview */}
+                <button
+                  className={styles.btnTerminate}
+                  onClick={finishInterview}
+                >
+                  Finish Interview
                 </button>
               </div>
             )}
           </div>
         </section>
-
       </main>
     </div>
   );
