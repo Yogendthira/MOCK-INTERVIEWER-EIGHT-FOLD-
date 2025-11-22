@@ -35,7 +35,7 @@ export default function InterviewPage() {
     const interval = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          finishInterview(true);
+          stop_recording();
           return 0;
         }
         return prev - 1;
@@ -90,108 +90,8 @@ export default function InterviewPage() {
     return recognition;
   }, []);
 
-  const startListening = () => {
-    if (!recognitionRef.current)
-      recognitionRef.current = initSpeechRecognition();
-
-    shouldBeListeningRef.current = true;
-    currentTranscriptRef.current = "";
-    setTranscriptDisplay("");
-
-    try {
-      recognitionRef.current.start();
-      setIsListening(true);
-    } catch {}
-  };
-
-  const stopListening = () => {
-    shouldBeListeningRef.current = false;
-
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {}
-    }
-
-    setTranscriptDisplay(currentTranscriptRef.current);
-    setIsListening(false);
-  };
-
-  // ---------------------- TEXT TO SPEECH ----------------------
-  const speakQuestion = (text) => {
-    if (!text) return;
-    stopListening();
-
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    window.speechSynthesis.speak(utter);
-  };
-
-  // ---------------------- PATCH ANSWER TO BACKEND ----------------------
-  const updateQuestions = async (question, answer) => {
-    if (!interviewId) return;
-
-    try {
-      const res = await axios.patch(
-        "http://localhost:5000/update-interview-questions",
-        { interview_id: interviewId, question, answer } // backend adds dummy review
-      );
-
-      if (res.status === 200) console.log("Questions updated successfully");
-    } catch (err) {
-      console.error("Error updating questions:", err);
-    }
-  };
-
-  // ---------------------- SUBMIT ANSWER ----------------------
-  const handleSubmitAnswer = async () => {
-    const finalText = currentTranscriptRef.current.trim();
-
-    if (!finalText) {
-      alert("Please speak before submitting.");
-      return;
-    }
-
-    stopListening();
-    setIsProcessing(true);
-
-    try {
-      const questionAsked = currentQuestionRef.current;
-
-      // PATCH user answer to backend
-      await updateQuestions(questionAsked, finalText);
-
-      // Request AI next question
-      const aiRes = await axios.post("http://localhost:5000/ai-aspect", {
-        interview_id: interviewId,
-        answer: finalText,
-        question_index: nextIndexRef.current,
-      });
-
-      currentTranscriptRef.current = "";
-      setTranscriptDisplay("");
-
-      if (aiRes.data.finished) {
-        setAiQuestion("Interview finished.");
-        finishInterview(false);
-        return;
-      }
-
-      const nextQ = aiRes.data.question;
-      setAiQuestion(nextQ);
-      currentQuestionRef.current = nextQ;
-      nextIndexRef.current = aiRes.data.next_index;
-
-      setIsProcessing(false);
-      speakQuestion(nextQ);
-    } catch (e) {
-      console.error(e);
-      setIsProcessing(false);
-    }
-  };
-
-  // ---------------------- START INTERVIEW ----------------------
-  const startInterview = async () => {
+  // ---------------------- RECORDING FUNCTIONS ----------------------
+  const start_recording = async () => {
     try {
       setRecording(true);
 
@@ -216,6 +116,7 @@ export default function InterviewPage() {
       recorder.start();
       mediaRecorderRef.current = recorder;
 
+      // Initialize AI interview
       const initRes = await axios.post("http://localhost:5000/ai-aspect-init", {
         interview_id: interviewId,
       });
@@ -234,16 +135,13 @@ export default function InterviewPage() {
     }
   };
 
-  // ---------------------- FINISH INTERVIEW ----------------------
-  const finishInterview = useCallback(
-    async (autoEnded = false) => {
-      setRecording(false);
-      stopListening();
-      window.speechSynthesis.cancel();
+  const stop_recording = async () => {
+    setRecording(false);
+    stop_listening();
+    window.speechSynthesis.cancel();
 
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stop();
-
+    if (mediaRecorderRef.current) {
+      return new Promise((resolve) => {
         mediaRecorderRef.current.onstop = async () => {
           const blob = new Blob(videoChunksRef.current, { type: "video/webm" });
           const file = new File([blob], "interview.webm", { type: "video/webm" });
@@ -262,13 +160,111 @@ export default function InterviewPage() {
           } catch (e) {
             console.error(e);
           }
+          resolve();
         };
+
+        mediaRecorderRef.current.stop();
+      });
+    }
+
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+  };
+
+  const start_listening = () => {
+    if (!recognitionRef.current) recognitionRef.current = initSpeechRecognition();
+
+    shouldBeListeningRef.current = true;
+    currentTranscriptRef.current = "";
+    setTranscriptDisplay("");
+
+    try {
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch {}
+  };
+
+  const stop_listening = () => {
+    shouldBeListeningRef.current = false;
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+    }
+
+    setTranscriptDisplay(currentTranscriptRef.current);
+    setIsListening(false);
+  };
+
+  const submit_answer = async () => {
+    const finalText = currentTranscriptRef.current.trim();
+
+    if (!finalText) {
+      alert("Please speak before submitting.");
+      return;
+    }
+
+    stop_listening();
+    setIsProcessing(true);
+
+    try {
+      const questionAsked = currentQuestionRef.current;
+
+      await updateQuestions(questionAsked, finalText);
+
+      const aiRes = await axios.post("http://localhost:5000/ai-aspect", {
+        interview_id: interviewId,
+        answer: finalText,
+        question_index: nextIndexRef.current,
+      });
+
+      currentTranscriptRef.current = "";
+      setTranscriptDisplay("");
+
+      if (aiRes.data.finished) {
+        setAiQuestion("Interview finished.");
+        await stop_recording();
+        return;
       }
 
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-    },
-    [interviewId, navigate]
-  );
+      const nextQ = aiRes.data.question;
+      setAiQuestion(nextQ);
+      currentQuestionRef.current = nextQ;
+      nextIndexRef.current = aiRes.data.next_index;
+
+      setIsProcessing(false);
+      speakQuestion(nextQ);
+    } catch (e) {
+      console.error(e);
+      setIsProcessing(false);
+    }
+  };
+
+  // ---------------------- TEXT TO SPEECH ----------------------
+  const speakQuestion = (text) => {
+    if (!text) return;
+    stop_listening();
+
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utter);
+  };
+
+  // ---------------------- PATCH ANSWER TO BACKEND ----------------------
+  const updateQuestions = async (question, answer) => {
+    if (!interviewId) return;
+
+    try {
+      const res = await axios.patch(
+        "http://localhost:5000/update-interview-questions",
+        { interview_id: interviewId, question, answer }
+      );
+
+      if (res.status === 200) console.log("Questions updated successfully");
+    } catch (err) {
+      console.error("Error updating questions:", err);
+    }
+  };
 
   // ---------------------- TIME FORMAT ----------------------
   const formatTime = (s) =>
@@ -327,31 +323,28 @@ export default function InterviewPage() {
 
           <div className={styles.controls}>
             {!recording ? (
-              <button className={styles.btnStart} onClick={startInterview}>
+              <button className={styles.btnStart} onClick={start_recording}>
                 Start Interview
               </button>
             ) : (
               <div className={styles.actionButtons}>
-                <button className={styles.btnStart} onClick={startListening}>
+                <button className={styles.btnStart} onClick={start_listening}>
                   🎙 Start Recording
                 </button>
 
-                <button className={styles.btnTerminate} onClick={stopListening}>
+                <button className={styles.btnTerminate} onClick={stop_listening}>
                   🛑 Stop Recording
                 </button>
 
                 <button
                   className={styles.btnSubmit}
-                  onClick={handleSubmitAnswer}
+                  onClick={submit_answer}
                   disabled={isProcessing}
                 >
                   {isProcessing ? "Processing..." : "Submit Answer"}
                 </button>
 
-                <button
-                  className={styles.btnTerminate}
-                  onClick={() => finishInterview(false)}
-                >
+                <button className={styles.btnTerminate} onClick={() => stop_recording()}>
                   Finish Interview
                 </button>
               </div>
