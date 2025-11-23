@@ -1,0 +1,123 @@
+.dashboard {
+  display: flex;
+  gap: 2rem;
+  padding: 2rem;
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+.leftContainer, .rightContainer {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  flex: 1;
+}
+
+.videoPlayer {
+  width: 100%;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+.shareSection {
+  margin-top: 1rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.shareBtn {
+  padding: 0.5rem 1rem;
+  background: #4f46e5;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.shareBtn:hover {
+  background: #4338ca;
+}
+
+.candidateName {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  color: #1f2937;
+}
+
+.questionsSection {
+  margin-top: 2rem;
+}
+
+.questionBlock {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f9fafb;
+  border-left: 4px solid #4f46e5;
+  border-radius: 6px;
+}
+
+.question {
+  font-weight: 600;
+}
+
+.answer {
+  margin-top: 0.5rem;
+  color: #374151;
+}
+
+.loading {
+  text-align: center;
+  padding: 2rem;
+  font-size: 1.5rem;
+  color: #6b7280;
+}
+
+.skillsList {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.skillItem {
+  background-color: #e0e7ff;
+  color: #3730a3;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.questionsSection {
+  margin-top: 2rem;
+}
+
+.questionBlock {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f9fafb;
+  border-left: 4px solid #4f46e5;
+  border-radius: 6px;
+}
+
+.question {
+  font-weight: 600;
+}
+
+.answer {
+  margin-top: 0.5rem;
+  color: #374151;
+}
+
+.loading, .error {
+  text-align: center;
+  padding: 2rem;
+  font-size: 1.5rem;
+  color: #6b7280;
+}

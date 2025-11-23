@@ -1,37 +1,233 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Chatbot</title>
+<meta charset="UTF-8">
+<title>AI Interview Partner</title>
+<style>
+    body { margin: 0; background: #0c0c0c; font-family: Arial, sans-serif; color: #fff; overflow-x: hidden; overflow-y: auto; }
+    #main-section { display: flex; height: 100vh; }
+    
+    /* LEFT: VIDEO AREA */
+    #video-area { flex: 2; background: #111; display: flex; flex-direction: column; justify-content: center; align-items: center; border-right: 1px solid rgba(255,255,255,0.1); }
+    #ai-video, #user-video { width: 250px; height: 250px; background: #222; border-radius: 12px; margin: 10px; display: flex; justify-content: center; align-items: center; border: 2px solid #333; color: #bbb; font-size: 20px; }
+
+    /* RIGHT: INTERVIEW PANEL */
+    #side-panel { flex: 1; padding: 20px; display: flex; flex-direction: column; background: #0d0d0d; }
+    #panel-title { font-size: 22px; font-weight: bold; margin-bottom: 10px; }
+    .box { background: #1a1a1a; border-radius: 12px; padding: 15px; margin-bottom: 15px; min-height: 120px; border: 1px solid rgba(255,255,255,0.1); overflow-y: auto; white-space: pre-wrap; }
+    .label { opacity: 0.7; font-size: 13px; margin-bottom: 3px; }
+    #voice-select { width: 100%; padding: 10px; border-radius: 10px; background: #222; border: 1px solid #444; color: white; margin-bottom: 10px; }
+
+    /* BOTTOM CONTROLS */
+    #bottom-controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; }
+    .control-btn { width: 55px; height: 55px; background: #202020; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; font-size: 24px; border: 2px solid #444; transition: 0.2s; }
+    .control-btn:hover { background: #333; transform: scale(1.05); }
+    .control-btn.recording { background: #e74c3c; border-color: #c0392b; animation: pulse 1.5s infinite; }
+    
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); } 100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); } }
+
+    /* RESPONSIVE */
+    @media (max-width: 900px) {
+        #main-section { flex-direction: column; height: auto; }
+        #video-area { height: 300px; flex-direction: row; }
+        #side-panel { width: 100%; border-left: none; border-top: 1px solid rgba(255,255,255,0.1); }
+        #bottom-controls { position: relative; margin-top: 15px; }
+    }
+</style>
 </head>
 <body>
-    <div id="chat"></div>
-    <input type="text" id="input" placeholder="Message...">
-    <button onclick="send()">Send</button>
 
-    <script>
-        const chat = document.getElementById('chat');
-        const input = document.getElementById('input');
+<div id="main-section">
+    <div id="video-area">
+        <div id="ai-video">🤖 AI</div>
+        <div id="user-video">👤 You</div>
+    </div>
 
-        async function send() {
-            const msg = input.value;
-            if (!msg) return;
+    <div id="side-panel">
+        <div id="panel-title">Interview Panel</div>
 
-            chat.innerHTML += '<p><b>You:</b> ' + msg + '</p>';
-            input.value = '';
+        <label class="label">Select Voice</label>
+        <select id="voice-select"></select>
+        
+        <div style="font-size: 12px; color: gray; margin-bottom: 10px;">Status: <span id="conn-status">Disconnected</span></div>
 
-            const res = await fetch('http://localhost:5000/chat', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message: msg})
-            });
+        <label class="label">Your Answer</label>
+        <div id="transcript" class="box">(Click mic to start)</div>
 
-            const data = await res.json();
-            chat.innerHTML += '<p><b>Bot:</b> ' + data.response + '</p>';
+        <label class="label">AI Response</label>
+        <div id="response" class="box"></div>
+    </div>
+</div>
+
+<div id="bottom-controls">
+    <div class="control-btn" id="mic-btn">🎤</div>
+</div>
+
+<script>
+/* -------------------------------------------------------------------
+   1. WEBSOCKET CONNECTION
+------------------------------------------------------------------- */
+const Socket = (() => {
+    let ws = null;
+    const statusEl = document.getElementById("conn-status");
+    const respBox = document.getElementById("response");
+
+    function connect() {
+        ws = new WebSocket("ws://localhost:8000/ws");
+
+        ws.onopen = () => {
+            statusEl.textContent = "Connected";
+            statusEl.style.color = "#0f0";
+        };
+
+        ws.onclose = () => {
+            statusEl.textContent = "Disconnected (Retrying...)";
+            statusEl.style.color = "red";
+            setTimeout(connect, 3000); // Auto reconnect
+        };
+
+        ws.onerror = (e) => console.error("WS Error:", e);
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "chunk") {
+                // FIXED: Use insertAdjacentText to prevent overwriting/flickering
+                respBox.insertAdjacentText('beforeend', msg.data);
+                
+                // Auto scroll to bottom
+                respBox.scrollTop = respBox.scrollHeight;
+                
+                // Send to TTS
+                TTS.speakChunk(msg.data);
+            } 
+            else if (msg.type === "end") {
+                TTS.flush();
+            }
+        };
+    }
+
+    function send(text) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            // Note: We do NOT clear the response box here anymore.
+            // It is cleared when the mic is clicked.
+            ws.send(JSON.stringify({ type: "ask", text: text }));
+        } else {
+            alert("Server not connected.");
         }
+    }
 
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') send();
+    return { connect, send };
+})();
+
+/* -------------------------------------------------------------------
+   2. TEXT-TO-SPEECH
+------------------------------------------------------------------- */
+const TTS = (() => {
+    let voices = [];
+    let audioBuffer = ""; 
+    const selectEl = document.getElementById("voice-select");
+
+    function loadVoices() {
+        voices = speechSynthesis.getVoices();
+        selectEl.innerHTML = "";
+        voices.forEach((v, i) => {
+            let opt = document.createElement("option");
+            opt.value = i;
+            opt.textContent = v.name;
+            selectEl.appendChild(opt);
         });
-    </script>
+    }
+
+    speechSynthesis.onvoiceschanged = loadVoices;
+
+    function speakChunk(text) {
+        audioBuffer += text;
+        if (/[.?!:\n]/.test(audioBuffer)) {
+            speakNow(audioBuffer);
+            audioBuffer = "";
+        }
+    }
+
+    function flush() {
+        if (audioBuffer.trim()) {
+            speakNow(audioBuffer);
+            audioBuffer = "";
+        }
+    }
+
+    function speakNow(text) {
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.voice = voices[selectEl.value] || voices[0];
+        speechSynthesis.speak(utter);
+    }
+
+    return { loadVoices, speakChunk, flush };
+})();
+
+/* -------------------------------------------------------------------
+   3. SPEECH RECOGNITION (Controls DOM Clearing)
+------------------------------------------------------------------- */
+const Speech = (() => {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) return null;
+
+    const rec = new Recognition();
+    rec.continuous = true;
+    rec.interimResults = true;
+
+    let isRecording = false;
+    let finalTranscript = "";
+    const micBtn = document.getElementById("mic-btn");
+    const transcriptBox = document.getElementById("transcript");
+    const responseBox = document.getElementById("response");
+
+    rec.onresult = (e) => {
+        let interim = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+            if (e.results[i].isFinal) {
+                finalTranscript += e.results[i][0].transcript + " ";
+            } else {
+                interim += e.results[i][0].transcript;
+            }
+        }
+        transcriptBox.textContent = finalTranscript + interim;
+    };
+
+    function toggle() {
+        if (!isRecording) {
+            // --- START NEW SESSION ---
+            isRecording = true;
+            finalTranscript = "";
+            
+            // 1. CLEAR THE DOM NOW (As requested)
+            responseBox.textContent = ""; 
+            transcriptBox.textContent = "(Listening...)";
+            
+            micBtn.classList.add("recording");
+            rec.start();
+        } else {
+            // --- STOP & SEND ---
+            isRecording = false;
+            micBtn.classList.remove("recording");
+            rec.stop();
+            
+            setTimeout(() => {
+                if (finalTranscript.trim()) {
+                    transcriptBox.textContent = finalTranscript; 
+                    Socket.send(finalTranscript);
+                }
+            }, 500);
+        }
+    }
+
+    return { toggle };
+})();
+
+// Init
+Socket.connect();
+TTS.loadVoices();
+document.getElementById("mic-btn").onclick = () => Speech.toggle();
+
+</script>
 </body>
 </html>
