@@ -1,123 +1,126 @@
-/* Container ------------------------------------------------------- */
+/* ---------------- Container ---------------- */
 .container {
-  width: 420px;
-  margin: 50px auto;
-  padding: 35px;
-  border-radius: 18px;
-
-  /* Water-inspired gradient + glass effect */
-  background: rgba(173, 216, 230, 0.3); /* light blue tint */
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-
-  box-shadow: 0 10px 30px rgba(0, 123, 255, 0.15);
-  font-family: "Inter", Arial, sans-serif;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #e0f0ff, #ffffff);
+  font-family: 'Poppins', sans-serif;
+  padding: 2rem;
+  transition: background 0.5s ease;
 }
 
-.container:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 14px 38px rgba(0, 123, 255, 0.25);
+/* ---------------- Card ---------------- */
+.card {
+  width: 100%;
+  max-width: 500px;
+  padding: 2.5rem 2rem;
+  background: #f4faff; /* subtle blue tint */
+  border-radius: 2rem;
+  box-shadow: 0 12px 24px rgba(0, 123, 255, 0.08), 0 4px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.5s ease;
+  transform: translateY(0);
+}
+.card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 20px 40px rgba(0, 123, 255, 0.15), 0 6px 12px rgba(0, 0, 0, 0.05);
 }
 
-/* Title ----------------------------------------------------------- */
+/* ---------------- Title ---------------- */
 .title {
   text-align: center;
-  margin-bottom: 25px;
-  font-size: 1.8rem;
+  font-size: 2.2rem;
   font-weight: 700;
-  color: #0a3d62; /* deep blue */
-  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  color: #0d2c54;
+  margin-bottom: 2rem;
+  letter-spacing: 0.5px;
 }
 
-/* Fields ---------------------------------------------------------- */
+/* ---------------- Input & Textarea ---------------- */
 .field {
-  margin-bottom: 22px;
+  margin-bottom: 1.8rem;
   display: flex;
   flex-direction: column;
+  opacity: 0;
+  animation: fadeInUp 0.7s ease forwards;
 }
 
-/* Labels ---------------------------------------------------------- */
-.label {
-  margin-bottom: 7px;
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: #055160; /* ocean teal */
+.field label {
+  margin-bottom: 0.6rem;
+  font-weight: 500;
+  color: #1b3a66;
 }
 
-/* Inputs / Textareas --------------------------------------------- */
-.input,
-.textarea,
-.select {
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid #99d1ea; /* soft blue border */
-  font-size: 0.95rem;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
-  background-color: rgba(173, 216, 230, 0.15); /* light watery background */
-  color: #033e5c;
+.field input,
+.field textarea,
+.field select {
+  width: 50%;
+  padding: 0.9rem 1.2rem;
+  border-radius: 1.2rem;
+  border: 1px solid #cce0ff;
+  font-size: 1rem;
+  transition: all 0.4s ease;
+  background-color: #eef7ff;
 }
 
-.input::placeholder,
-.textarea::placeholder {
-  color: #6faecf;
-}
-
-.input:focus,
-.textarea:focus,
-.select:focus {
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
   outline: none;
-  border-color: #00aaff;
-  box-shadow: 0 0 0 4px rgba(0, 170, 255, 0.25);
+  border-color: #1a73ff;
+  box-shadow: 0 0 12px rgba(26, 115, 255, 0.3);
 }
 
-.textarea {
-  min-height: 90px;
-  resize: vertical;
+/* Smooth textarea */
+textarea {
+  resize: none;
+  min-height: 130px;
 }
 
-/* Buttons --------------------------------------------------------- */
+/* ---------------- Buttons ---------------- */
 .button {
   width: 100%;
-  padding: 12px;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 1rem;
-
-  background: linear-gradient(135deg, #00c6ff, #0072ff);
+  padding: 1rem 1.2rem;
+  border-radius: 2rem;
+  background: linear-gradient(90deg, #1a73ff, #4a90ff);
   color: white;
-
-  box-shadow: 0 5px 15px rgba(0, 114, 255, 0.3);
-  transition: background 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+  font-weight: 600;
+  font-size: 1.15rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.4s ease;
+  box-shadow: 0 8px 20px rgba(26, 115, 255, 0.3);
 }
-
 .button:hover {
-  background: linear-gradient(135deg, #00b0ff, #005fcc);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 114, 255, 0.45);
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 14px 30px rgba(26, 115, 255, 0.4);
 }
-
 .button:active {
-  transform: translateY(0);
-  box-shadow: 0 5px 13px rgba(0, 114, 255, 0.3);
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 6px 18px rgba(26, 115, 255, 0.35);
 }
-
 .button:disabled {
-  background: #a0c4ff;
+  opacity: 0.6;
   cursor: not-allowed;
-  box-shadow: none;
 }
 
-/* Custom Select --------------------------------------------------- */
-.select {
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, #0072ff 50%),
-                    linear-gradient(135deg, #0072ff 50%, transparent 50%);
-  background-position: calc(100% - 15px) calc(50% - 3px),
-                       calc(100% - 10px) calc(50% - 3px);
-  background-size: 6px 6px, 6px 6px;
-  background-repeat: no-repeat;
+/* ---------------- Animations ---------------- */
+@keyframes fadeInUp {
+  0% { opacity: 0; transform: translateY(25px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
+
+@keyframes fadeInDown {
+  0% { opacity: 0; transform: translateY(-25px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Apply fade-in to title and fields with delay */
+.title {
+  animation: fadeInDown 0.8s ease forwards;
+}
+
+.field:nth-child(1) { animation-delay: 0.2s; }
+.field:nth-child(2) { animation-delay: 0.4s; }
+.field:nth-child(3) { animation-delay: 0.6s; }
+.field:nth-child(4) { animation-delay: 0.8s; }

@@ -33,12 +33,8 @@ export default function InterviewForm() {
       });
 
       const insertedId = response.data.inserted_id;
-      console.log('DEBUG: Interview created with ID:', insertedId); // 🔹 debug
-
-      // Redirect to InterviewPage with interviewId in state
       navigate('/InterviewPage', { state: { interviewId: insertedId } });
     } catch (err) {
-      console.error('DEBUG Axios Error:', err);
       alert(err?.response?.data?.error || err.message || 'Unknown error');
     } finally {
       setLoading(false);
@@ -47,47 +43,54 @@ export default function InterviewForm() {
 
   return (
     <div className={styles.container}>
-      <h2 className={styles.title}>Start Interview</h2>
+      <div className={styles.card}>
+        <h2 className={styles.title}>Start Interview</h2>
 
-      <div className={styles.field}>
-        <label className={styles.label}>Upload Resume (PDF)</label>
-        <input type="file" accept=".pdf" onChange={handleFileChange} />
+        {/* Resume Upload */}
+        <div className={styles.field}>
+          <label>Upload Resume (PDF)</label>
+          <input type="file" accept=".pdf" onChange={handleFileChange} />
+        </div>
+
+        {/* Job Description */}
+        <div className={styles.field}>
+          <label>Job Description</label>
+          <textarea
+            placeholder="Enter job description here..."
+            value={jobDesc}
+            onChange={(e) => setJobDesc(e.target.value)}
+          />
+        </div>
+
+        {/* Interview Type */}
+        <div className={styles.field}>
+          <label>Interview Type</label>
+          <select value={interviewType} onChange={(e) => setInterviewType(e.target.value)}>
+            <option value="">Select type</option>
+            <option value="technical">Technical</option>
+            <option value="technical advanced">Technical Advanced</option>
+            <option value="managerial">Managerial</option>
+            <option value="personal">Personal</option>
+          </select>
+        </div>
+
+        {/* Duration */}
+        <div className={styles.field}>
+          <label>Duration</label>
+          <select value={duration} onChange={(e) => setDuration(e.target.value)}>
+            <option value="">Select duration</option>
+            <option value="15 minutes">15 minutes</option>
+            <option value="30 minutes">30 minutes</option>
+            <option value="45 minutes">45 minutes</option>
+            <option value="60 minutes">60 minutes</option>
+          </select>
+        </div>
+
+        {/* Submit Button */}
+        <button className={styles.button} onClick={handleSubmit} disabled={loading}>
+          {loading ? 'Starting...' : 'Start Interview'}
+        </button>
       </div>
-
-      <div className={styles.field}>
-        <label className={styles.label}>Job Description</label>
-        <textarea
-          placeholder="Enter job description here..."
-          value={jobDesc}
-          onChange={(e) => setJobDesc(e.target.value)}
-        />
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label}>Interview Type</label>
-        <select value={interviewType} onChange={(e) => setInterviewType(e.target.value)}>
-          <option value="">Select type</option>
-          <option value="technical">Technical</option>
-          <option value="technical advanced">Technical Advanced</option>
-          <option value="managerial">Managerial</option>
-          <option value="personal">Personal</option>
-        </select>
-      </div>
-
-      <div className={styles.field}>
-        <label className={styles.label}>Duration</label>
-        <select value={duration} onChange={(e) => setDuration(e.target.value)}>
-          <option value="">Select duration</option>
-          <option value="15 minutes">15 minutes</option>
-          <option value="30 minutes">30 minutes</option>
-          <option value="45 minutes">45 minutes</option>
-          <option value="60 minutes">60 minutes</option>
-        </select>
-      </div>
-
-      <button onClick={handleSubmit} disabled={loading}>
-        {loading ? 'Starting...' : 'Start Interview'}
-      </button>
     </div>
   );
 }

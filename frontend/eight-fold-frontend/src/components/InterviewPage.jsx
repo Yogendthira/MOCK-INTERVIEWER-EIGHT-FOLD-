@@ -15,7 +15,7 @@ export default function InterviewPage() {
   const [isListening, setIsListening] = useState(false);
   const [timeLeft, setTimeLeft] = useState(900);
   const [transcriptDisplay, setTranscriptDisplay] = useState("");
-  const [silenceLeft, setSilenceLeft] = useState(5); // 5 seconds until auto-submit
+  const [silenceLeft, setSilenceLeft] = useState(5);
 
   // ---------------------- REFS ----------------------
   const recognitionRef = useRef(null);
@@ -29,10 +29,11 @@ export default function InterviewPage() {
   const mediaRecorderRef = useRef(null);
   const videoChunksRef = useRef([]);
 
+  const wsRef = useRef(null); // WebSocket reference
+
   // ---------------------- TIMER ----------------------
   useEffect(() => {
     if (!recording) return;
-
     const interval = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -74,7 +75,6 @@ export default function InterviewPage() {
       if (final) currentTranscriptRef.current += final;
       setTranscriptDisplay(currentTranscriptRef.current + interim);
 
-      // measure speech length for silence detection
       const spokenLength = currentTranscriptRef.current.trim().length + interim.trim().length;
       if (spokenLength > 2) {
         setSilenceLeft(5); // reset silence countdown if speaking
@@ -82,7 +82,6 @@ export default function InterviewPage() {
     };
 
     recognition.onerror = () => setIsListening(false);
-
     recognition.onend = () => {
       setIsListening(false);
       if (shouldBeListeningRef.current) {
@@ -134,7 +133,6 @@ export default function InterviewPage() {
     stop_listening();
     window.speechSynthesis.cancel();
 
-    // Stop all media tracks immediately
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
 
@@ -202,7 +200,7 @@ export default function InterviewPage() {
     const silenceInterval = setInterval(() => {
       setSilenceLeft((prev) => {
         if (prev <= 1) {
-          submit_answer(true); // true = send "no response" if empty
+          submit_answer(true);
           return 5;
         }
         return prev - 1;
@@ -212,48 +210,95 @@ export default function InterviewPage() {
     return () => clearInterval(silenceInterval);
   }, [recording, isListening]);
 
-  const submit_answer = async (sendNoResponse = false) => {
-    let finalText = currentTranscriptRef.current.trim();
-    if (!finalText && sendNoResponse) finalText = "no response";
+  // ---------------------- SUBMIT ANSWER VIA WEBSOCKET ----------------------
+const submit_answer = async (sendNoResponse = false) => {
+  let finalText = currentTranscriptRef.current.trim();
+  if (!finalText && sendNoResponse) finalText = "no response";
 
-    stop_listening();
-    setIsProcessing(true);
+  stop_listening();
+  setIsProcessing(true);
 
-    try {
-      if (finalText) {
-        const questionAsked = currentQuestionRef.current;
-        await updateQuestions(questionAsked, finalText);
+  try {
+    // Initialize WebSocket if not already or closed
+    if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+      wsRef.current = new WebSocket("ws://localhost:8000/ws/ai-aspect");
 
-        const aiRes = await axios.post("http://localhost:5000/ai-aspect", {
+      wsRef.current.onopen = () => {
+        console.log("WebSocket connected");
+
+        // Send pending answer once connected
+        wsRef.current.send(
+          JSON.stringify({
+            interview_id: interviewId,
+            answer: finalText,
+            question_index: nextIndexRef.current,
+          })
+        );
+      };
+
+      wsRef.current.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "chunk") {
+          setTranscriptDisplay((prev) => prev + data.data);
+        } else if (data.type === "end") {
+          const nextQ = data.question;
+          setAiQuestion(nextQ);
+          currentQuestionRef.current = nextQ;
+          nextIndexRef.current = data.next_index;
+          setIsProcessing(false);
+
+          if (data.finished) {
+            setAiQuestion("Interview finished.");
+            stop_recording();
+          } else {
+            speakQuestion(nextQ);
+          }
+        }
+      };
+    } 
+    // If WebSocket is already open, send immediately
+    else if (wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
           interview_id: interviewId,
           answer: finalText,
           question_index: nextIndexRef.current,
-        });
-
-        currentTranscriptRef.current = "";
-        setTranscriptDisplay("");
-
-        if (aiRes.data.finished) {
-          setAiQuestion("Interview finished.");
-          await stop_recording();
-          return;
-        }
-
-        const nextQ = aiRes.data.question;
-        setAiQuestion(nextQ);
-        currentQuestionRef.current = nextQ;
-        nextIndexRef.current = aiRes.data.next_index;
-
-        setIsProcessing(false);
-        speakQuestion(nextQ);
-      } else {
-        setIsProcessing(false);
-      }
-    } catch (e) {
-      console.error(e);
-      setIsProcessing(false);
+        })
+      );
     }
-  };
+    // If connecting, wait a bit and retry
+    else {
+      const interval = setInterval(() => {
+        if (wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(
+            JSON.stringify({
+              interview_id: interviewId,
+              answer: finalText,
+              question_index: nextIndexRef.current,
+            })
+          );
+          clearInterval(interval);
+        }
+      }, 100); // check every 100ms
+    }
+
+    // Patch the answer to backend DB
+    const questionAsked = currentQuestionRef.current;
+    await axios.patch("http://localhost:8000/update-interview-questions", {
+      interview_id: interviewId,
+      question: questionAsked,
+      answer: finalText,
+    });
+
+    currentTranscriptRef.current = "";
+    setTranscriptDisplay("");
+  } catch (e) {
+    console.error(e);
+    setIsProcessing(false);
+  }
+};
+
 
   // ---------------------- TEXT TO SPEECH ----------------------
   const speakQuestion = (text) => {
@@ -263,26 +308,9 @@ export default function InterviewPage() {
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
     utter.onend = () => {
-      // start recording automatically after speech finishes
       start_recording();
     };
     window.speechSynthesis.speak(utter);
-  };
-
-  // ---------------------- PATCH ANSWER TO BACKEND ----------------------
-  const updateQuestions = async (question, answer) => {
-    if (!interviewId) return;
-
-    try {
-      const res = await axios.patch(
-        "http://localhost:5000/update-interview-questions",
-        { interview_id: interviewId, question, answer }
-      );
-
-      if (res.status === 200) console.log("Questions updated successfully");
-    } catch (err) {
-      console.error("Error updating questions:", err);
-    }
   };
 
   // ---------------------- TIME FORMAT ----------------------
@@ -303,7 +331,6 @@ export default function InterviewPage() {
       </header>
 
       <main className={styles.mainContent}>
-        {/* LEFT PANEL */}
         <section className={styles.leftPanel}>
           <div className={styles.aiBubble}>
             <div className={styles.aiAvatar}>🤖</div>
@@ -339,7 +366,6 @@ export default function InterviewPage() {
           </div>
         </section>
 
-        {/* RIGHT PANEL */}
         <section className={styles.rightPanel}>
           <div className={styles.videoWrapper}>
             <video ref={videoRef} className={styles.videoFeed} muted playsInline />
@@ -350,8 +376,8 @@ export default function InterviewPage() {
               <button
                 className={styles.btnStart}
                 onClick={async () => {
-                  // Initialize AI interview and play first question
-                  const initRes = await axios.post("http://localhost:5000/ai-aspect-init", {
+                  // Initialize AI interview
+                  const initRes = await axios.post("http://localhost:8000/ai-aspect-init", {
                     interview_id: interviewId,
                   });
                   const firstQ =
