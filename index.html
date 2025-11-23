@@ -1,37 +1,83 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Chatbot</title>
+    <title>Chat</title>
+    <style>
+        body { font-family: Arial; max-width: 500px; margin: 20px auto; }
+        #messages { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; background: #f9f9f9; }
+        .message { margin: 8px 0; padding: 8px; border-radius: 5px; }
+        .user { text-align: right; background: #e3f2fd; color: #0d47a1; margin-left: 100px; }
+        .bot { text-align: left; background: #f1f8e9; color: #33691e; margin-right: 100px; }
+        input { width: 80%; padding: 8px; }
+        button { padding: 8px 15px; cursor: pointer; }
+    </style>
 </head>
 <body>
-    <div id="chat"></div>
-    <input type="text" id="input" placeholder="Message...">
+    <h2>Chroma Chatbot</h2>
+    <div id="messages"></div>
+    <input type="text" id="msg" placeholder="Type message..." onkeypress="if(event.key=='Enter') send()">
     <button onclick="send()">Send</button>
+    <button onclick="clearChat()" style="background: #ff6b6b; color: white;">Clear</button>
 
     <script>
-        const chat = document.getElementById('chat');
-        const input = document.getElementById('input');
+        const API = 'http://localhost:5000/api';
+        const msgs = document.getElementById('messages');
+        const inp = document.getElementById('msg');
 
-        async function send() {
-            const msg = input.value;
-            if (!msg) return;
-
-            chat.innerHTML += '<p><b>You:</b> ' + msg + '</p>';
-            input.value = '';
-
-            const res = await fetch('http://localhost:5000/chat', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message: msg})
-            });
-
-            const data = await res.json();
-            chat.innerHTML += '<p><b>Bot:</b> ' + data.response + '</p>';
+        function addMessage(text, role) {
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            div.textContent = text;
+            msgs.appendChild(div);
+            msgs.scrollTop = msgs.scrollHeight;
         }
 
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') send();
-        });
+        async function send() {
+            let text = inp.value.trim();
+            if (!text) return;
+            
+            addMessage(text, 'user');
+            inp.value = '';
+            inp.disabled = true;
+            
+            try {
+                let res = await fetch(API + '/send-message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text })
+                });
+                let data = await res.json();
+                addMessage(data.bot_response, 'bot');
+            } catch (e) {
+                addMessage('Error!', 'bot');
+            } finally {
+                inp.disabled = false;
+                inp.focus();
+            }
+        }
+
+        async function clearChat() {
+            if (confirm('Clear all?')) {
+                await fetch(API + '/clear-history', { method: 'POST' });
+                msgs.innerHTML = '';
+            }
+        }
+
+        async function load() {
+            try {
+                let res = await fetch(API + '/get-history');
+                let data = await res.json();
+                data.messages.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+                msgs.innerHTML = '';
+                data.messages.forEach(m => {
+                    addMessage(m.text, m.role);
+                });
+            } catch (e) {
+                console.error('Load error:', e);
+            }
+        }
+
+        load();
     </script>
 </body>
 </html>

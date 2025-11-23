@@ -1,0 +1,43 @@
+{
+  "username": "SASHANTH A",
+  "file": "SASHANTH RESUME.pdf",
+  "keywords": {
+    "programming_languages": [
+      "Python",
+      "C++",
+      "Java"
+    ],
+    "frameworks_libraries": [
+      "Django REST Framework",
+      "React JS",
+      "Flask Git and GitHub WebRTC Twilio"
+    ],
+    "databases": [
+      "PostgreSQL",
+      "MySQL"
+    ],
+    "technical_skills": [
+      "SQL",
+      "AI-driven problem breakdown logical gap identification NLP vector search LLM Integration"
+    ],
+    "tools_software": [
+      "Gemini API Chrome extension WebRTC Twilio"
+    ],
+    "achievements": [
+      "HackVerse Hackathon PSG College of Technology Competitive Programming Club"
+    ],
+    "soft_skills": [
+      "Leadership",
+      "teamwork coordination promotion participation increase"
+    ],
+    "certifications": [
+      "C++ for Competitive Programming React JS Certification Course Design Thinking Practitioner SQL Advanced Team Essentials for AI"
+    ],
+    "languages": [
+      "Python Java HTML/CSS"
+    ],
+    "projects": [
+      "MediCare Faculty Management System AI-Powered Coding Assistant"
+    ]
+  }
+}
