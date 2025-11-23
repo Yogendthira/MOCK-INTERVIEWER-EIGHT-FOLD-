@@ -1,21 +1,3 @@
-def extract_name_from_resume(resume_text):
-    """Extract name from resume using pattern matching"""
-    lines = resume_text.split('\n')
-    
-    # Get first few non-empty lines (usually contains the name)
-    for line in lines[:10]:
-        line = line.strip()
-        if len(line) > 2 and len(line) < 100:
-            # Remove common resume headers
-            if not any(x in line.lower() for x in ['email', 'phone', 'address', 'linkedin', 'github', 'portfolio', '@', '|']):
-                # Check if line looks like a name (has capital letters, no numbers)
-                if not any(char.isdigit() for char in line) and any(char.isupper() for char in line):
-                    # Clean up the line
-                    name = line.replace('•', '').replace('-', '').replace('*', '').strip()
-                    if len(name) > 2 and len(name) < 60:
-                        return name
-    
-    return "Unknown"
 
 import requests
 import json
@@ -26,31 +8,39 @@ import re
 OLLAMA_API = "http://localhost:11434/api/generate"
 MODEL = "phi3:3.8b"
 
-def read_resume_file(file_path):
-    """Read resume from file"""
-    if not os.path.exists(file_path):
-        print(f"❌ File not found: {file_path}")
+import base64
+import io
+import PyPDF2
+
+def read_resume_from_base64(b64_input):
+    """
+    Decode base64 resume file and return extracted text.
+    Supports PDF and plain text.
+    """
+    try:
+        file_bytes = base64.b64decode(b64_input)
+    except Exception:
+        print("❌ Invalid Base64 input")
         return None
-    
-    if file_path.endswith('.txt'):
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
-    
-    elif file_path.endswith('.pdf'):
-        try:
-            import PyPDF2
-            with open(file_path, 'rb') as f:
-                pdf_reader = PyPDF2.PdfReader(f)
-                text = ""
-                for page in pdf_reader.pages:
-                    text += page.extract_text()
-                return text
-        except ImportError:
-            print("Install PyPDF2: pip install PyPDF2")
-            return None
-    else:
-        print("❌ Unsupported file format. Use .txt or .pdf")
+
+    # Attempt PDF first
+    try:
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() or ""
+        if len(text.strip()) > 0:
+            return text
+    except Exception:
+        pass  # Not a PDF, try text mode next
+
+    # Try decoding as UTF-8 text file
+    try:
+        return file_bytes.decode("utf-8", errors="ignore")
+    except Exception:
+        print("❌ Unsupported file format or corrupt Base64 content")
         return None
+
 
 def extract_structured_keywords(resume_text):
     """Extract structured keywords using simple text parsing"""
@@ -257,6 +247,25 @@ def main():
         print(f"📊 Total unique keywords extracted: {total}\n")
     else:
         print("❌ Failed to extract keywords")
+
+def extract_name_from_resume(resume_text):
+    """Extract name from resume using pattern matching"""
+    lines = resume_text.split('\n')
+    
+    # Get first few non-empty lines (usually contains the name)
+    for line in lines[:10]:
+        line = line.strip()
+        if len(line) > 2 and len(line) < 100:
+            # Remove common resume headers
+            if not any(x in line.lower() for x in ['email', 'phone', 'address', 'linkedin', 'github', 'portfolio', '@', '|']):
+                # Check if line looks like a name (has capital letters, no numbers)
+                if not any(char.isdigit() for char in line) and any(char.isupper() for char in line):
+                    # Clean up the line
+                    name = line.replace('•', '').replace('-', '').replace('*', '').strip()
+                    if len(name) > 2 and len(name) < 60:
+                        return name
+    
+    return "Unknown"
 
 if __name__ == "__main__":
     print("Make sure Ollama is running: ollama run phi3:3.8b\n")

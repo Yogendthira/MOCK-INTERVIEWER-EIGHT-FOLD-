@@ -20,22 +20,26 @@ interviews_collection = db["interviews"]  # Main collection
 videos_collection = db["videos"]          # Video collection
 
 # Helper functions
-def insert_interview(resume_data, resume_filename, interview_type, duration, job_description):
+def insert_interview(resume_data, resume_filename, job_description, interview_type, duration,
+                     name, skills, summarized):
+
     interview_data = {
-        "resume_file": resume_data,   # Store raw bytes directly
+        "resume_file": resume_data,
         "resume_filename": resume_filename,
-        "name": "Dummy Name",
-        "skills": ["Python", "React"],
+        "name": name,
+        "skills": skills,
         "job_description": job_description,
         "interview_type": interview_type,
         "duration": duration,
         "questions_asked": [],
         "overall_review": "",
         "time_taken": "",
-        "summarized": None,
+        "summarized": summarized,
         "created_at": datetime.utcnow()
     }
+
     return interviews_collection.insert_one(interview_data)
+
 
 def update_questions(interview_id, questions):
     return interviews_collection.update_one(
