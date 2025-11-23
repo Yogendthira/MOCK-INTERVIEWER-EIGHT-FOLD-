@@ -34,7 +34,7 @@ llm = ChatOllama(
 
 # C. The Prompt
 template = """You are an expert Technical Interviewer.
-
+at most 50 words
 YOUR GOAL:
 Conduct a rigorous behavioral and technical interview.
 
