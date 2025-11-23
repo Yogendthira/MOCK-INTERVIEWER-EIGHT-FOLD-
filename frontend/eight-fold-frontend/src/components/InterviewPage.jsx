@@ -214,12 +214,13 @@ export default function InterviewPage() {
         };
         wsRef.current.onmessage = (event) => {
           const data = JSON.parse(event.data);
+
           if (data.type === "chunk") {
-            setTranscriptDisplay((prev) => prev + data.data);
+            // Append chunk to AI question and speak immediately
+            setAiQuestion((prev) => prev + data.data);
+            speakChunk(data.data);
           } else if (data.type === "end") {
-            const nextQ = data.question;
-            setAiQuestion(nextQ);
-            currentQuestionRef.current = nextQ;
+            currentQuestionRef.current = data.question;
             nextIndexRef.current = data.next_index;
             setIsProcessing(false);
 
@@ -227,7 +228,7 @@ export default function InterviewPage() {
               setAiQuestion("Interview finished.");
               stop_recording();
             } else {
-              speakQuestion(nextQ);
+              speakQuestion(data.question);
             }
           }
         };
@@ -256,6 +257,12 @@ export default function InterviewPage() {
   };
 
   // ---------------------- TEXT TO SPEECH ----------------------
+  const speakChunk = (text) => {
+    if (!text) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utter);
+  };
+
   const speakQuestion = (text) => {
     if (!text) return;
     stop_listening();
@@ -287,7 +294,7 @@ export default function InterviewPage() {
             <div className={styles.aiContent}>
               <span className={styles.speakerLabel}>AI Interviewer</span>
               <p className={styles.aiText}>
-                {isProcessing ? "Evaluating answer..." : aiQuestion}
+                {aiQuestion === "" ? "Waiting response.." : aiQuestion}
               </p>
             </div>
           </div>
@@ -325,9 +332,10 @@ export default function InterviewPage() {
                   currentQuestionRef.current = firstQ;
                   nextIndexRef.current = initRes.data.next_index || 1;
 
-                  speakQuestion(firstQ);
+                  // speakQuestion(firstQ);
                   start_recording();
                 } else {
+                  setAiQuestion("");
                   await stop_recording();
                 }
               }}
