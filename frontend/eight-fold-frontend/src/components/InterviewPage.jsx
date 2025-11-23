@@ -50,12 +50,10 @@ export default function InterviewPage() {
   const initSpeechRecognition = useCallback(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
-
     if (!SpeechRecognition) {
       alert("Browser does not support Speech Recognition. Use Chrome.");
       return null;
     }
-
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -89,11 +87,10 @@ export default function InterviewPage() {
         } catch {}
       }
     };
-
     return recognition;
   }, []);
 
-  // ---------------------- RECORDING FUNCTIONS ----------------------
+  // ---------------------- RECORDING ----------------------
   const start_recording = async () => {
     try {
       setRecording(true);
@@ -102,12 +99,10 @@ export default function InterviewPage() {
         audio: true,
       });
       streamRef.current = stream;
-
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
       }
-
       const recorder = new MediaRecorder(stream);
       videoChunksRef.current = [];
       recorder.ondataavailable = (e) => {
@@ -147,8 +142,6 @@ export default function InterviewPage() {
             await axios.post("http://localhost:5000/generate-summary", {
               interview_id: interviewId,
             });
-
-            // REDIRECT to another endpoint
             navigate(`/ReviewPage`, { state: { interviewId } });
           } catch (e) {
             console.error(e);
@@ -177,13 +170,9 @@ export default function InterviewPage() {
   const stop_listening = () => {
     shouldBeListeningRef.current = false;
     setSilenceLeft(5);
-
     if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {}
+      try { recognitionRef.current.stop(); } catch {}
     }
-
     setTranscriptDisplay(currentTranscriptRef.current);
     setIsListening(false);
   };
@@ -191,7 +180,6 @@ export default function InterviewPage() {
   // ---------------------- AUTO SUBMIT ON SILENCE ----------------------
   useEffect(() => {
     if (!recording || !isListening) return;
-
     const silenceInterval = setInterval(() => {
       setSilenceLeft((prev) => {
         if (prev <= 1) {
@@ -201,7 +189,6 @@ export default function InterviewPage() {
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(silenceInterval);
   }, [recording, isListening]);
 
@@ -225,7 +212,6 @@ export default function InterviewPage() {
             })
           );
         };
-
         wsRef.current.onmessage = (event) => {
           const data = JSON.parse(event.data);
           if (data.type === "chunk") {
@@ -273,17 +259,13 @@ export default function InterviewPage() {
   const speakQuestion = (text) => {
     if (!text) return;
     stop_listening();
-
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
-    utter.onend = () => {
-      start_recording();
-    };
+    utter.onend = () => { start_recording(); };
     window.speechSynthesis.speak(utter);
   };
 
-  const formatTime = (s) =>
-    `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+  const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
   // ---------------------- RENDER ----------------------
   return (
@@ -292,7 +274,9 @@ export default function InterviewPage() {
         <h2>Technical Interview</h2>
         <div className={styles.timerBadge}>⏱ {formatTime(timeLeft)}</div>
         {recording && isListening && (
-          <div className={styles.silenceBadge}>Silence countdown: {silenceLeft}s</div>
+          <div className={styles.silenceBadge}>
+            Silence countdown: {silenceLeft}s
+          </div>
         )}
       </header>
 
@@ -333,7 +317,6 @@ export default function InterviewPage() {
               className={recording ? styles.btnTerminate : styles.btnStart}
               onClick={async () => {
                 if (!recording) {
-                  // START INTERVIEW
                   const initRes = await axios.post("http://localhost:8000/ai-aspect-init", {
                     interview_id: interviewId,
                   });
@@ -343,10 +326,9 @@ export default function InterviewPage() {
                   nextIndexRef.current = initRes.data.next_index || 1;
 
                   speakQuestion(firstQ);
-                  start_recording(); // start recording immediately
+                  start_recording();
                 } else {
-                  // STOP INTERVIEW
-                  await stop_recording(); // stops recording, uploads video, redirects
+                  await stop_recording();
                 }
               }}
             >
