@@ -37,6 +37,7 @@ async def ai_aspect_init(req: AIInitRequest):
     Initialize AI interview: generate first set of questions
     """
     try:
+        print(AIAspectRequest)
         initial_questions = [
             {"question": "Tell me about yourself."},
             {"question": "What are your strengths?"},

@@ -32,7 +32,7 @@ export default function InterviewForm() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      const insertedId = response.data.inserted_id;
+      const insertedId = response.data.interview_id;
       navigate('/InterviewPage', { state: { interviewId: insertedId } });
     } catch (err) {
       alert(err?.response?.data?.error || err.message || 'Unknown error');

@@ -7,7 +7,7 @@ export default function InterviewPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const interviewId = location.state?.interviewId;
-
+  // console.log("state : " , interviewId)
   // ---------------------- STATE ----------------------
   const [aiQuestion, setAiQuestion] = useState("Press Start to begin...");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -326,7 +326,7 @@ export default function InterviewPage() {
                 if (!recording) {
                   const initRes = await axios.post("http://localhost:8000/ai-aspect-init", {
                     interview_id: interviewId,
-                  });
+                  },{ headers: { "Content-Type": "application/json" } });
                   const firstQ = initRes.data.questions?.[0]?.question || "Tell me about yourself.";
                   setAiQuestion(firstQ);
                   currentQuestionRef.current = firstQ;
@@ -334,6 +334,7 @@ export default function InterviewPage() {
 
                   // speakQuestion(firstQ);
                   start_recording();
+                  speakQuestion("Introduce yourself ..")
                 } else {
                   setAiQuestion("");
                   await stop_recording();
