@@ -13,10 +13,26 @@ from datetime import datetime
 # RESUME EXTRACTION MODULE
 # ============================
 
-OLLAMA_API = "http://localhost:11434/v1/generate"
-MODEL = "phi3:mini"
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate
+
+# Configure Gemini
+# Make sure to set your GOOGLE_API_KEY in your environment variables or paste it here
+os.environ["GOOGLE_API_KEY"] = "AIzaSyB2I_w5vLfQFt2dKMQm5_DoAQc9pi-SZJs"
+
+# We use 'gemini-1.5-flash' because it is fast, cheap, and smart enough for resumes
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    temperature=0.0, # 0.0 ensures the model is factual and strict
+    convert_system_message_to_human=True
+)
+
+# ============================
+# RESUME EXTRACTION MODULE
+# ============================
 
 def extract_name_from_resume(resume_text):
+    # (Keep your existing logic here, it works fine for regex extraction)
     lines = resume_text.split('\n')
     for line in lines[:10]:
         line = line.strip()
@@ -29,6 +45,7 @@ def extract_name_from_resume(resume_text):
     return "Unknown"
 
 def extract_resume_text(file_storage):
+    # (Keep your existing logic here)
     filename = file_storage.filename
     file_storage.stream.seek(0)
     data = file_storage.read()
@@ -52,45 +69,79 @@ def extract_resume_text(file_storage):
     return ""
 
 def extract_structured_keywords(resume_text):
-    prompt = f"""
-Extract ONLY keywords from this resume. Return ONLY in this EXACT format:
+    # Gemini is smarter, so we can give it a cleaner prompt.
+    template_text = """
+    You are an expert technical recruiter AI. Extract information from the resume below.
+    
+    INSTRUCTIONS:
+    1. Output ONLY valid JSON. No markdown formatting (no ```json), no intro text.
+    2. If a field is missing, use an empty list [].
+    3. Be concise. Extract specific skills (e.g., "Python", "React") rather than sentences.
+    
+    REQUIRED JSON FORMAT:
+    {{
+        "username": "Extract the candidate's full name",
+        "programming_languages": ["List", "of", "languages"],
+        "frameworks_libraries": ["List", "of", "frameworks"],
+        "databases": ["List", "of", "databases"],
+        "technical_skills": ["List", "of", "skills", "like", "Git", "AWS", "Docker"],
+        "tools_software": ["List", "of", "tools"],
+        "achievements": ["List", "of", "key", "achievements"],
+        "soft_skills": ["List", "of", "soft", "skills"],
+        "certifications": ["List", "of", "certifications"],
+        "languages": ["List", "of", "spoken", "languages"],
+        "projects": ["List", "of", "project", "titles"]
+    }}
 
-USERNAME: ...
-PROGRAMMING_LANGUAGES: ...
-FRAMEWORKS_LIBRARIES: ...
-DATABASES: ...
-TECHNICAL_SKILLS: ...
-TOOLS_SOFTWARE: ...
-ACHIEVEMENTS: ...
-SOFT_SKILLS: ...
-CERTIFICATIONS: ...
-LANGUAGES: ...
-PROJECTS: ...
-
-Resume:
-{resume_text}
-"""
+    RESUME TEXT:
+    {resume_text}
+    """
+    
+    prompt = ChatPromptTemplate.from_template(template_text)
+    
     try:
-        response = requests.post(
-            OLLAMA_API,
-            json={
-                "model": MODEL,
-                "prompt": prompt,
-                "max_tokens": 500,
-                "temperature": 0
-            },
-            timeout=300
-        )
+        chain = prompt | llm 
+        response = chain.invoke({'resume_text': resume_text})
+        content = response.content
 
-        response.raise_for_status()  # <-- will raise error if HTTP not 200
-        raw = response.json().get("completion", "")
-        categories = { ... }  # keep your parsing logic here
-        # parse 'raw' as before
-        return categories
+        # CLEANUP: Gemini sometimes puts ```json at the start. We remove it.
+        cleaned_text = content.replace("```json", "").replace("```", "").strip()
+        
+        data = json.loads(cleaned_text)
+        
+        # Format for your Frontend (Uppercased Keys, comma-separated strings)
+        formatted_categories = {
+            "USERNAME": data.get("username", "Unknown"),
+            "PROGRAMMING_LANGUAGES": ", ".join(data.get("programming_languages", [])),
+            "FRAMEWORKS_LIBRARIES": ", ".join(data.get("frameworks_libraries", [])),
+            "DATABASES": ", ".join(data.get("databases", [])),
+            "TECHNICAL_SKILLS": ", ".join(data.get("technical_skills", [])),
+            "TOOLS_SOFTWARE": ", ".join(data.get("tools_software", [])),
+            "ACHIEVEMENTS": "; ".join(data.get("achievements", [])),
+            "SOFT_SKILLS": ", ".join(data.get("soft_skills", [])),
+            "CERTIFICATIONS": ", ".join(data.get("certifications", [])),
+            "LANGUAGES": ", ".join(data.get("languages", [])),
+            "PROJECTS": ", ".join(data.get("projects", []))
+        }
+        
+        return formatted_categories
 
-    except requests.exceptions.RequestException as e:
-        print("Ollama request failed:", e)
-        return None
+    except Exception as e:
+        print("Gemini Extraction Error:", e)
+        # Return a safe empty dict so the app doesn't crash
+        return {
+            "USERNAME": "Error Extracting",
+            "PROGRAMMING_LANGUAGES": "",
+            "FRAMEWORKS_LIBRARIES": "",
+            "DATABASES": "",
+            "TECHNICAL_SKILLS": "",
+            "TOOLS_SOFTWARE": "",
+            "ACHIEVEMENTS": "",
+            "SOFT_SKILLS": "",
+            "CERTIFICATIONS": "",
+            "LANGUAGES": "",
+            "PROJECTS": ""
+        }
 
 # ============================
 # FLASK ROUTES

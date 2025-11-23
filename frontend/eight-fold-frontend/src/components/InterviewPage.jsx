@@ -231,6 +231,7 @@ export default function InterviewPage() {
               speakQuestion(data.question);
             }
           }
+          
         };
       } else if (wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(

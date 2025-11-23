@@ -34,9 +34,9 @@ llm = ChatOllama(
 
 # C. The Prompt
 template = """You are an expert Technical Interviewer.
-at most 50 words
+
 YOUR GOAL:
-Conduct a rigorous behavioral and technical interview.
+Conduct a rigorous behavioral and technical interview and be never more than 50 words , in your response and question .
 
 RULES:
 1. Do NOT accept vague answers. Dig deeper.
