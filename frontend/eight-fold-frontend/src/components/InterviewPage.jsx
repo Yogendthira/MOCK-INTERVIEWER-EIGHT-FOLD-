@@ -240,7 +240,6 @@ const submit_answer = async (sendNoResponse = false) => {
         const data = JSON.parse(event.data);
 
         if (data.type === "chunk") {
-          setTranscriptDisplay((prev) => prev + data.data);
         } else if (data.type === "end") {
           const nextQ = data.question;
           setAiQuestion(nextQ);
@@ -285,7 +284,7 @@ const submit_answer = async (sendNoResponse = false) => {
 
     // Patch the answer to backend DB
     const questionAsked = currentQuestionRef.current;
-    await axios.patch("http://localhost:8000/update-interview-questions", {
+    await axios.patch("http://localhost:5000/update-interview-questions", {
       interview_id: interviewId,
       question: questionAsked,
       answer: finalText,
